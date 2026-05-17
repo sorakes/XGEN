@@ -19,4 +19,4 @@ Preparar o código para o primeiro Release Público no GitHub, garantindo que ne
 - O repositório Github receberá o código-fonte limpo com a arquitetura `agent.ts` consertada.
 
 ## Status
-[DOING]
+[DONE]

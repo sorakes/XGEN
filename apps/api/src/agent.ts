@@ -129,7 +129,7 @@ REGRAS DE FUNCIONAMENTO (INFRAESTRUTURA):
 1. TAILWINDCSS: É ABSOLUTAMENTE OBRIGATÓRIO incluir a tag <script src="https://cdn.tailwindcss.com"></script> no <head>. O design baseia-se 100% nas suas classes.
 2. LIBERDADE DE FLUXO: Não engesse o documento com larguras fixas matemáticas (como 210mm). Use a fluidez do Tailwind (100%, flex, grid) para que o layout se expanda até as bordas lindamente. O ambiente de impressão do servidor se ajustará ao seu HTML.
 3. PREVENÇÃO DE RASGO: Apenas envolva seções importantes, tabelas e gráficos em <div class="break-inside-avoid"> para impedir que a folha seja cortada no meio durante a conversão PDF.
-4. GRÁFICOS: Sinta-se livre para desenhar gráficos inserindo a tag de imagem do QuickChart ou importando o Chart.js.
+4. GRÁFICOS ESTATÍSTICOS: É TERMINANTEMENTE PROIBIDO usar APIs de imagem como o QuickChart (quickchart.io). Para gráficos, você DEVE obrigatoriamente importar o Chart.js via CDN (<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>), criar uma tag <canvas> e instanciar o gráfico com um script inline localmente. O servidor renderizará o canvas ao vivo.
 5. PAGINAÇÃO VISUAL: Se desejar, crie elementos de rodapé e cabeçalho desenhados com HTML no limite das suas divisões lógicas para dar sensação de revista.
 
 A paleta de cores, os gradientes e a disposição dos componentes dependem 100% do gosto exigido pelo usuário!
