@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  xgen:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: xgen_enterprise
+    ports:
+      - "3000:3000" # Painel Web (Next.js)
+      - "3001:3001" # API HTTP Express
+    volumes:
+      # Mantém os PDFs e DOCX exportados persistidos na sua máquina real
+      - ./exports:/app/exports
+      # Persistência do Banco de Dados SQLite (Seguro - Docker Volumes)
+      - xgen_db_data:/app/apps/api/prisma
+      # Persistência da Fila do Redis
+      - xgen_redis_data:/var/lib/redis
+    restart: unless-stopped
+    # NOTA PARA OPENWEBUI: 
+    # Para o MCP acessar via stdio, o comando de inicialização lá no chat será:
+    # docker exec -i xgen_enterprise node apps/api/dist/mcp-server.js
+
+volumes:
+  xgen_db_data:
+  xgen_redis_data:

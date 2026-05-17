@@ -1,0 +1,53 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Settings {
+  id          Int      @id @default(1)
+  
+  // --- LLM Providers ---
+  openai_key        String?   // OpenAI (GPT-4o, etc)
+  openai_model      String?   @default("gpt-4o")
+  openai_base_url   String?   @default("https://api.openai.com/v1")
+  
+  ollama_url        String?   @default("http://localhost:11434")
+  ollama_model      String?   @default("llama3")
+  
+  openrouter_key    String?   // OpenRouter.ai
+  openrouter_model  String?   @default("openai/gpt-4o")
+  
+  google_key        String?   // Google Gemini API
+  google_model      String?   @default("gemini-2.0-flash")
+  
+  active_llm        String    @default("openai") // 'openai' | 'ollama' | 'openrouter' | 'google'
+  
+  // --- Image Providers ---
+  pexels_key        String?   // Pexels Stock Images
+  comfyui_url       String?   @default("http://localhost:8188")
+  comfyui_workflow  String?   // JSON do workflow ComfyUI
+  gemini_img_key    String?   // Google Gemini Image Generation
+  
+  active_image      String    @default("pexels") // 'pexels' | 'comfyui' | 'gemini'
+  
+  // --- Engine ---
+  max_retries       Int       @default(3)
+  
+  updatedAt         DateTime  @updatedAt
+}
+
+model DocumentJob {
+  id           String   @id @default(uuid())
+  status       String   // 'queued', 'processing', 'completed', 'failed'
+  current_step String?  // 'Gerando Design (1/3)', 'Revisão QA (2/3)', etc.
+  prompt       String
+  file_type    String   // 'PDF', 'DOCX', 'XLSX'
+  file_url     String?
+  error_log    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
