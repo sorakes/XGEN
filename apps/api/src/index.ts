@@ -1,4 +1,7 @@
 import express from 'express';
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import cors from 'cors';
 import { PrismaClient } from '@prisma/client';
 import { Worker, Queue } from 'bullmq';
@@ -135,6 +138,14 @@ app.get('/api/jobs', async (req, res) => {
   } catch (error) { res.status(500).json({ error: 'Erro ao buscar jobs' }); }
 });
 
+app.get('/api/jobs/:id', async (req, res) => {
+  try {
+    const job = await prisma.documentJob.findUnique({ where: { id: req.params.id } });
+    if (!job) return res.status(404).json({ error: 'Job não encontrado' });
+    res.json(job);
+  } catch (error) { res.status(500).json({ error: 'Erro ao buscar job' }); }
+});
+
 // --- TEST ENDPOINT ---
 const documentQueue = new Queue('DocumentQueue', { connection: { host: 'localhost', port: 6379 } });
 
@@ -148,8 +159,139 @@ app.post('/api/generate', async (req, res) => {
       data: { status: 'queued', file_type: documentType, prompt: instructions, current_step: 'Na fila' }
     });
     await documentQueue.add('generate', { jobId: jobRecord.id, documentType, instructions }, { jobId: jobRecord.id });
-    res.json({ success: true, jobId: jobRecord.id, message: 'Job enfileirado!' });
+
+    // --- O BLOQUEIO SÍNCRONO (TRAVA O OPENWEBUI NO CALLING TOOL) ---
+    let isDone = false;
+    let finalJob: any = jobRecord;
+    while (!isDone) {
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      const check = await prisma.documentJob.findUnique({ where: { id: jobRecord.id } });
+      if (!check || check.status === 'completed' || check.status === 'failed') {
+        isDone = true;
+        finalJob = check;
+      }
+    }
+
+    if (finalJob?.status === 'completed') {
+      res.json({
+        success: true,
+        message: `Relatorio finalizado com sucesso! PARE DE FALAR e entregue exatamente este link Markdown ao usuario para ele fazer o download: [Baixar Relatorio ${documentType}](http://host.docker.internal:3001${finalJob.file_url})`
+      });
+    } else {
+      res.status(500).json({ error: 'Falha na geracao do documento pelo XGEN.' });
+    }
   } catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
+// --- MCP SSE SERVER (OPEN WEBUI INTEGRATION) ---
+const mcpServer = new Server({ name: "XGEN-MCP", version: "1.0.0" }, { capabilities: { tools: {} } });
+
+mcpServer.setRequestHandler(ListToolsRequestSchema, async () => {
+  return {
+    tools: [
+      {
+        name: "generate_premium_document",
+        description: "Inicia a geracao assincrona do documento. RETORNA UM JOB_ID. REGRA ABSOLUTA: Apos invocar esta ferramenta, voce NAO DEVE responder ao usuario. Voce DEVE obrigatoriamente chamar a ferramenta 'check_xgen_job_status' passando o jobId para acompanhar a fila.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            documentType: { type: "string", enum: ["PDF", "DOCX", "XLSX"] },
+            instructions: { type: "string" }
+          },
+          required: ["documentType", "instructions"]
+        }
+      },
+      {
+        name: "check_xgen_job_status",
+        description: "Verifica o andamento do documento. Mantenha chamando esta ferramenta ate que o status mude para 'completed'. Quando terminar, devolva o 'file_url' ao usuario em formato de link clicavel para download.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            jobId: { type: "string", description: "O ID retornado pela ferramenta de geracao" }
+          },
+          required: ["jobId"]
+        }
+      }
+    ]
+  };
+});
+
+mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
+  if (request.params.name === "generate_premium_document") {
+    const { documentType, instructions } = request.params.arguments as any;
+    const jobRecord = await prisma.documentJob.create({
+      data: { status: "queued", file_type: documentType, prompt: instructions, current_step: "Na fila" }
+    });
+    await documentQueue.add('generate', { jobId: jobRecord.id, documentType, instructions }, { jobId: jobRecord.id });
+    return {
+      content: [{ type: "text", text: `Job iniciado! ID: ${jobRecord.id}. PARE DE FALAR e chame IMEDIATAMENTE a ferramenta 'check_xgen_job_status' com este ID.` }]
+    };
+  }
+  if (request.params.name === "check_xgen_job_status") {
+    const { jobId } = request.params.arguments as any;
+    const job = await prisma.documentJob.findUnique({ where: { id: jobId } });
+    if (!job) return { content: [{ type: "text", text: "Job nao encontrado" }] };
+    return { content: [{ type: "text", text: JSON.stringify({ status: job.status, step: job.current_step, file_url: job.file_url ? `http://host.docker.internal:3001${job.file_url}` : null }) }] };
+  }
+  throw new Error(`Tool not found: ${request.params.name}`);
+});
+
+let transport: SSEServerTransport | null = null;
+
+app.get('/mcp/sse', async (req, res) => {
+  transport = new SSEServerTransport('/mcp/messages', res);
+  await mcpServer.connect(transport);
+});
+
+// O OpenWebUI faz um POST para verificar a conexão ou enviar mensagens diretamente
+app.post('/mcp/sse', async (req, res) => {
+  if (!transport) {
+    res.status(200).json({ jsonrpc: "2.0", id: req.body?.id || 1, result: { protocolVersion: "2024-11-05", capabilities: {}, serverInfo: { name: "XGEN", version: "1.0.0" } } });
+    return;
+  }
+  await transport.handlePostMessage(req, res);
+});
+
+app.post('/mcp/messages', async (req, res) => {
+  if (transport) {
+    await transport.handlePostMessage(req, res);
+  } else {
+    res.status(500).send("MCP transport not initialized");
+  }
+});
+
+// --- OPENAPI INTEGRATION (A Rota Nativa Perfeita) ---
+app.get('/openapi.json', (req, res) => {
+  res.json({
+    openapi: "3.1.0",
+    info: { title: "XGEN Enterprise API", version: "1.0.0" },
+    servers: [{ url: "http://host.docker.internal:3001" }],
+    paths: {
+      "/api/generate": {
+        post: {
+          operationId: "generate_premium_document",
+          summary: "Gera relatorios de luxo em PDF, planilhas XLSX ou DOCX.",
+          description: "Sempre que o usuario pedir para gerar um relatorio, documento ou planilha, use esta ferramenta informando o tipo do documento e as instrucoes detalhadas. A ferramenta vai demorar cerca de 40 segundos para responder, apenas aguarde. Quando ela responder, entregue o Link de Download gerado ao usuario.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    documentType: { type: "string", enum: ["PDF", "DOCX", "XLSX"], description: "Formato do documento." },
+                    instructions: { type: "string", description: "Todos os detalhes dos dados que vao no relatorio/planilha." }
+                  },
+                  required: ["documentType", "instructions"]
+                }
+              }
+            }
+          },
+          responses: { "200": { description: "Sucesso, retorna a mensagem com o link final do arquivo." } }
+        }
+      }
+    }
+  });
 });
 
 app.listen(PORT, () => {
