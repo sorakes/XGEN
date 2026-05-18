@@ -8,7 +8,7 @@ services:
     container_name: xgen_db_init
     volumes:
       - xgen_db_data:/app/apps/api/prisma
-    command: npx prisma db push --schema=apps/api/prisma/schema.prisma
+    command: sh -c "cd apps/api && npx prisma db push"
 
   xgen:
     build: 
