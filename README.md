@@ -41,8 +41,8 @@ A integração é feita usando o protocolo nativo **OpenAPI** do XGEN, o que for
 2. Adicione uma nova conexão no menu lateral.
 3. No campo **Tipo** (canto superior), altere de `MCP` para **OpenAPI**.
 4. No campo **URL Base da API**, digite exatamente isto:
-   `http://host.docker.internal:3001/openapi.json`
-   *(Nota: Se estiver rodando no Linux ou em ambientes onde o internal host é ignorado, utilize o IP do host da rede local, ex: `http://192.168.0.x:3001/openapi.json`)*
+   `http://host.docker.internal:3001`
+   *(Nota: Se estiver rodando no Linux ou em ambientes onde o internal host é ignorado, utilize o IP do host da rede local, ex: `http://192.168.0.x:3001`)*
 5. Clique no botão verde de atualizar 🔄 para carregar as instruções da ferramenta.
 6. Clique em **Salvar**.
 
