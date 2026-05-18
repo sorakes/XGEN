@@ -14,5 +14,4 @@ exports/
 .turbo/
 apps/web/.next/
 apps/api/dist/
-.antigravity/sessions/
-.antigravity/scratch/
+.antigravity/
