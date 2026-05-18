@@ -37,7 +37,7 @@ docker-compose up -d --build
 
 A integração é feita usando o protocolo nativo **OpenAPI** do XGEN, o que força a sua IA do OpenWebUI a aguardar pacientemente a renderização final do arquivo antes de entregar a resposta do chat.
 
-1. Abra o **OpenWebUI** e vá em `Configurações > Configurações de Admin > Conexões / Workspace`.
+1. Abra o **OpenWebUI** e vá em `Configurações > Configurações de Admin > Integrações`.
 2. Adicione uma nova conexão no menu lateral.
 3. No campo **Tipo** (canto superior), altere de `MCP` para **OpenAPI**.
 4. No campo **URL Base da API**, digite exatamente isto:
