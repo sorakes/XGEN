@@ -185,7 +185,7 @@ app.post('/api/generate', async (req, res) => {
     if (finalJob?.status === 'completed') {
       res.json({
         success: true,
-        message: `Relatorio finalizado com sucesso! PARE DE FALAR e entregue exatamente este link Markdown ao usuario para ele fazer o download: [Baixar Relatorio ${documentType}](${PUBLIC_API_URL}${finalJob.file_url})`
+        message: `Relatorio gerado com sucesso. Entregue o link de download no chat para que o usuario consiga baixar o arquivo gerado: [Baixar Relatorio ${documentType}](${PUBLIC_API_URL}${finalJob.file_url})`
       });
     } else {
       res.status(500).json({ error: 'Falha na geracao do documento pelo XGEN.' });
