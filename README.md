@@ -52,9 +52,3 @@ Ative a chavinha de Ferramentas (`Tools / +`) no seu chat, certifique-se de usar
 > *"Você agora está conectada ao gerador XGEN Enterprise. Gere para mim um relatório tático de projeção do mercado imobiliário para os próximos 3 anos. Entregue em formato PDF usando a ferramenta de geração do XGEN."*
 
 O OpenWebUI mostrará a bolinha "Calling Tool / Chamando Ferramenta..." rodando na tela. Ele vai esperar aproximadamente 40 segundos. Assim que o motor interno do Docker finalizar o layout e salvar o arquivo estático na pasta `/exports`, o chat receberá a resposta 200 OK e soltará o texto para você com o **Link Markdown** direto e clicável.
-
-## 🔒 Proteção e Variáveis Sensíveis
-As chaves de API externas que você usa para os motores são persistidas unicamente no banco de dados local `dev.db` pela UI do Dashboard, não sendo registradas de maneira explícita (hardcoded) no código. O arquivo `.gitignore` protege os bancos e chaves para garantir que não vazem se o código sofrer um Pull Request / Push.
-
----
-**Desenvolvido com o Protocolo Enterprise Cloud Code**
