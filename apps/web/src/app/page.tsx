@@ -28,7 +28,7 @@ interface Job {
   createdAt: string; updatedAt: string;
 }
 
-const API = 'http://localhost:3001';
+const API = typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:3001` : 'http://localhost:3001';
 
 const defaults: SettingsData = {
   openai_key: '', openai_model: 'gpt-4o', openai_base_url: 'https://api.openai.com/v1',
