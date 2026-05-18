@@ -10,6 +10,9 @@ import { convertToPDF, convertToDOCX, convertToXLSX } from './converters';
 import fs from 'fs';
 import path from 'path';
 
+// Resolve a URL publica de API (Prod usará o valor setado no docker-compose, Dev usa o padrão abaixo)
+const PUBLIC_API_URL = process.env.PUBLIC_API_URL || "http://host.docker.internal:3001";
+
 const app = express();
 const prisma = new PrismaClient();
 
@@ -182,7 +185,7 @@ app.post('/api/generate', async (req, res) => {
     if (finalJob?.status === 'completed') {
       res.json({
         success: true,
-        message: `Relatorio finalizado com sucesso! PARE DE FALAR e entregue exatamente este link Markdown ao usuario para ele fazer o download: [Baixar Relatorio ${documentType}](http://host.docker.internal:3001${finalJob.file_url})`
+        message: `Relatorio finalizado com sucesso! PARE DE FALAR e entregue exatamente este link Markdown ao usuario para ele fazer o download: [Baixar Relatorio ${documentType}](${PUBLIC_API_URL}${finalJob.file_url})`
       });
     } else {
       res.status(500).json({ error: 'Falha na geracao do documento pelo XGEN.' });
@@ -238,7 +241,7 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { jobId } = request.params.arguments as any;
     const job = await prisma.documentJob.findUnique({ where: { id: jobId } });
     if (!job) return { content: [{ type: "text", text: "Job nao encontrado" }] };
-    return { content: [{ type: "text", text: JSON.stringify({ status: job.status, step: job.current_step, file_url: job.file_url ? `http://host.docker.internal:3001${job.file_url}` : null }) }] };
+    return { content: [{ type: "text", text: JSON.stringify({ status: job.status, step: job.current_step, file_url: job.file_url ? `${PUBLIC_API_URL}${job.file_url}` : null }) }] };
   }
   throw new Error(`Tool not found: ${request.params.name}`);
 });
@@ -272,7 +275,7 @@ app.get('/openapi.json', (req, res) => {
   res.json({
     openapi: "3.1.0",
     info: { title: "XGEN Enterprise API", version: "1.0.0" },
-    servers: [{ url: "http://host.docker.internal:3001" }],
+    servers: [{ url: PUBLIC_API_URL }],
     paths: {
       "/api/generate": {
         post: {
