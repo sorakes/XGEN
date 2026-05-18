@@ -52,3 +52,51 @@ Ative a chavinha de Ferramentas (`Tools / +`) no seu chat, certifique-se de usar
 > *"Você agora está conectada ao gerador XGEN Enterprise. Gere para mim um relatório tático de projeção do mercado imobiliário para os próximos 3 anos. Entregue em formato PDF usando a ferramenta de geração do XGEN."*
 
 O OpenWebUI mostrará a bolinha "Calling Tool / Chamando Ferramenta..." rodando na tela. Ele vai esperar aproximadamente 40 segundos. Assim que o motor interno do Docker finalizar o layout e salvar o arquivo estático na pasta `/exports`, o chat receberá a resposta 200 OK e soltará o texto para você com o **Link Markdown** direto e clicável.
+
+## 🌐 Acesso Externo & Proxy Reverso (Nginx)
+
+### Por que usar um Proxy Reverso?
+Quando você acessa o seu chat IA de forma externa (fora da rede local onde o servidor está instalado), o seu navegador não consegue resolver IPs locais ou privados (como `192.168.x.x`). 
+Ao invés de expor a porta de API do XGEN (`3001`) diretamente na internet, a melhor prática de segurança e infraestrutura é utilizar um Proxy Reverso (como o **Nginx**) para rotear as requisições de forma segura e encapsulada.
+
+Desta forma, os downloads de arquivos passarão pelo mesmo domínio seguro do seu chat IA (ex: `https://chat.suaempresa.com/exports/...`), eliminando bloqueios de firewall e erros de conexão recusada (`ERR_CONNECTION_REFUSED`).
+
+### Passo a Passo de Configuração
+
+#### 1. Configurando o Nginx
+No servidor onde está o Nginx que gerencia o seu domínio público, abra a configuração do seu site e adicione a regra abaixo para redirecionar os downloads para o container do XGEN internamente:
+
+```nginx
+# Rota para downloads de relatórios gerados pelo XGEN
+location /exports/ {
+    proxy_pass http://192.168.1.100:3001/exports/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+*(Substitua `192.168.1.100` pelo IP privado local do servidor da sua rede).*
+
+Após alterar a configuração do Nginx, teste e reinicie o serviço:
+```bash
+nginx -t
+systemctl reload nginx
+```
+
+#### 2. Configurando o XGEN via Variável de Ambiente
+Para que os links gerados no chat usem o seu domínio público, adicione a variável `PUBLIC_API_URL` ao seu ambiente.
+
+1. No diretório do projeto, crie um arquivo `.env` (ou adicione as variáveis no seu `docker-compose.yml` de produção):
+   ```env
+   PUBLIC_API_URL=https://chat.suaempresa.com
+   ```
+   *(Substitua `https://chat.suaempresa.com` pelo seu endereço público de acesso externo).*
+
+2. Reinicie os containers com o comando de rebuild para aplicar a nova variável:
+   ```bash
+   docker-compose down
+   docker-compose up -d --build
+   ```
+
+A partir desse momento, todo relatório gerado virá com um link público pronto para download seguro de qualquer lugar do mundo!
