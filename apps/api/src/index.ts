@@ -120,6 +120,10 @@ app.get('/api/settings', async (req, res) => {
 app.put('/api/settings', async (req, res) => {
   try {
     const payload = req.body;
+    delete payload.id;
+    delete payload.updatedAt;
+    delete payload.createdAt;
+    
     let settings = await prisma.settings.findFirst();
     if (settings) {
       settings = await prisma.settings.update({ where: { id: settings.id }, data: payload });
@@ -127,7 +131,10 @@ app.put('/api/settings', async (req, res) => {
       settings = await prisma.settings.create({ data: payload });
     }
     res.json(settings);
-  } catch (error) { res.status(500).json({ error: 'Erro ao atualizar configurações' }); }
+  } catch (error) { 
+    console.error("❌ Erro ao salvar configurações:", error);
+    res.status(500).json({ error: 'Erro ao atualizar configurações' }); 
+  }
 });
 
 // --- JOBS QUEUE ---
