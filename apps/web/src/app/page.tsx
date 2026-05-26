@@ -28,7 +28,7 @@ interface Job {
   createdAt: string; updatedAt: string;
 }
 
-const API = typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:3001` : 'http://localhost:3001';
+const API = typeof window !== 'undefined' ? '' : 'http://localhost:3001';
 
 const defaults: SettingsData = {
   openai_key: '', openai_model: 'gpt-4o', openai_base_url: 'https://api.openai.com/v1',
@@ -56,7 +56,7 @@ export default function XGenDashboard() {
       for (const [k, v] of Object.entries(res)) { cleaned[k] = v ?? (defaults as any)[k] ?? ''; }
       setData({ ...defaults, ...cleaned }); setLoading(false);
     }).catch(() => {
-      setToast({ msg: 'API não encontrada em :3001', type: 'error' }); setLoading(false);
+      setToast({ msg: 'API não encontrada', type: 'error' }); setLoading(false);
     });
   }, []);
 
