@@ -55,12 +55,6 @@ O OpenWebUI mostrará a bolinha "Calling Tool / Chamando Ferramenta..." rodando 
 
 ## 🌐 Acesso Externo & Proxy Reverso (Nginx)
 
-### Por que usar um Proxy Reverso?
-Quando você acessa o seu chat IA de forma externa (fora da rede local onde o servidor está instalado), o seu navegador não consegue resolver IPs locais ou privados (como `192.168.x.x`). 
-Ao invés de expor a porta de API do XGEN (`3001`) diretamente na internet, a melhor prática de segurança e infraestrutura é utilizar um Proxy Reverso (como o **Nginx**) para rotear as requisições de forma segura e encapsulada.
-
-Desta forma, os downloads de arquivos passarão pelo mesmo domínio seguro do seu chat IA (ex: `https://chat.suaempresa.com/exports/...`), eliminando bloqueios de firewall e erros de conexão recusada (`ERR_CONNECTION_REFUSED`).
-
 ### Passo a Passo de Configuração
 
 #### 1. Configurando o Nginx
