@@ -35,7 +35,9 @@ docker-compose up -d --build
 
 ## 🔌 Como Integrar no OpenWebUI
 
-A integração é feita usando o protocolo nativo **OpenAPI** do XGEN, o que força a sua IA do OpenWebUI a aguardar pacientemente a renderização final do arquivo antes de entregar a resposta do chat.
+A integração é feita usando **exclusivamente** o protocolo nativo **OpenAPI** do XGEN, o que força a sua IA do OpenWebUI a aguardar pacientemente a renderização final do arquivo antes de entregar a resposta do chat.
+
+> ⚠️ **Importante:** o XGEN expõe a ferramenta de geração apenas via OpenAPI (`/openapi.json`). Não registre o mesmo servidor XGEN como uma conexão MCP simultaneamente — ter as duas integrações ativas ao mesmo tempo para a mesma ferramenta pode fazer o modelo chamá-la duas vezes e gerar o documento em duplicidade.
 
 1. Abra o **OpenWebUI** e vá em `Configurações > Configurações de Admin > Integrações`.
 2. Adicione uma nova conexão no menu lateral.

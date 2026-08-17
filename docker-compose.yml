@@ -22,7 +22,8 @@ services:
       - "3001:3001" # API HTTP Express
     volumes:
       # Mantém os PDFs e DOCX exportados persistidos na sua máquina real
-      - ./exports:/app/exports
+      # (o código resolve o caminho relativo ao dist compilado: apps/api/dist/../exports)
+      - ./exports:/app/apps/api/exports
       # Persistência do Banco de Dados SQLite (Seguro - Docker Volumes)
       - xgen_db_data:/app/apps/api/prisma
       # Persistência da Fila do Redis
@@ -31,9 +32,6 @@ services:
     depends_on:
       xgen_db_init:
         condition: service_completed_successfully
-    # NOTA PARA OPENWEBUI: 
-    # Para o MCP acessar via stdio, o comando de inicialização lá no chat será:
-    # docker exec -i xgen_enterprise node apps/api/dist/mcp-server.js
 
 volumes:
   xgen_db_data:
