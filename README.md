@@ -72,6 +72,48 @@ Ative a chavinha de Ferramentas (`Tools / +`) no seu chat, certifique-se de usar
 
 O OpenWebUI mostrará a bolinha "Calling Tool / Chamando Ferramenta..." rodando na tela. Ele vai esperar de 1 a 5 minutos (depende do modelo e do número de páginas). Assim que o motor interno do Docker finalizar o layout e salvar o arquivo estático na pasta `/exports`, o chat receberá a resposta 200 OK e soltará o texto para você com o **Link Markdown** direto e clicável.
 
+## 💬 Perguntas antes de gerar e imagens extras
+
+Quando o usuário pede um documento sem dizer como quer, o XGEN **não gera ainda**: devolve ao chat as perguntas, e o modelo do OpenWebUI as repassa:
+
+1. **Nível:** simples (curto, direto) ou avançado (mais páginas, dados e gráficos)?
+2. **Imagens:** sem imagens, só as anexadas, **fotos reais** de um banco de imagens (Pexels) ou **geradas por IA**, e quantas (até 8). Se ele já anexou imagens, a pergunta começa por "Recebi N imagens, usar só elas ou acrescentar mais?".
+
+Com as respostas, o chat chama a ferramenta de novo com `detailLevel`, `imageSource` e `extraImages`, e o XGEN busca ou gera as imagens, junta com as anexadas e monta o documento. Pedidos literais ("coloque essas imagens num PDF") e planilhas não passam pelas perguntas.
+
+Configuração (aba **Image Providers** do painel, cada provedor tem um botão **Testar**):
+- **Pexels:** API key gratuita em pexels.com/api.
+- **IA:**
+  - **OpenRouter:** usa a mesma chave do LLM; o modelo padrão é `google/gemini-3.1-flash-image`.
+  - **Gemini:** chave própria.
+  - **ComfyUI:** local, com um workflow que use `{{PROMPT}}`.
+
+## ✏️ Editor de apresentações (PPTX)
+
+Todo PPTX gerado vem com **dois links** no chat: **Baixar** e **Editar**.
+
+- **O PPTX baixado é editável no PowerPoint:** os textos são caixas de texto de verdade, as imagens são objetos móveis e o fundo do slide é uma imagem que dá para trocar. O que o PowerPoint não sabe desenhar (gradientes, sombras, ícones SVG) vai numa camada de decoração, então o visual continua igual ao gerado.
+- **O link "Editar"** abre o editor no painel do XGEN (`/editor/<id>`), onde dá para:
+  - clicar num elemento para selecionar, arrastar para mover e usar o quadrado azul para redimensionar;
+  - dar duplo clique para editar o texto, e mudar tamanho, cor, negrito, itálico e alinhamento;
+  - trocar imagens e o fundo do slide, e adicionar textos e imagens;
+  - duplicar, apagar e reordenar slides;
+  - usar o painel de **camadas** para selecionar, esconder (olho) ou travar (cadeado) cada elemento, inclusive o fundo;
+  - ajustar a **opacidade** de qualquer elemento (também vale no PPTX exportado);
+  - mudar a **ordem das camadas** (para a frente de tudo, uma para frente, uma para trás, para trás de tudo). O elemento vira um objeto solto, no mesmo lugar, e os que estão sobrepostos a ele entram na mesma pilha;
+  - **duplicar** (Ctrl+D), **copiar e colar** (Ctrl+C / Ctrl+V, inclusive entre slides), inserir **formas** (retângulo, arredondado, círculo, linha) e mudar a **cor de preenchimento**. No PPTX, as formas saem como formas nativas do PowerPoint;
+  - desfazer com Ctrl+Z e apagar elementos com Delete.
+  As alterações são salvas sozinhas e o botão **Baixar PPTX** gera o arquivo novo.
+- **Fontes:** o editor lista as Google Fonts usadas na apresentação. Quem abrir o PPTX num computador sem essas fontes verá uma fonte substituta, então instale-as para ficar idêntico.
+- **Acesso:** qualquer pessoa com o link consegue editar (o ID é aleatório, como nos links de download). O HTML editado é renderizado no servidor com a rede bloqueada: só os CDNs de Tailwind, Chart.js e Google Fonts são acessíveis.
+
+Para o link funcionar fora da sua máquina, exponha também o painel (porta `3000`) e defina `PUBLIC_WEB_URL` (padrão: o host do `PUBLIC_API_URL` com a porta 3000). No Nginx:
+```nginx
+location /editor/ { proxy_pass http://192.168.1.100:3000; }
+location /_next/  { proxy_pass http://192.168.1.100:3000; }
+location /api/decks/ { proxy_pass http://192.168.1.100:3001; client_max_body_size 80m; proxy_read_timeout 300s; }
+```
+
 ## 🖼️ Imagens anexadas no chat do OpenWebUI
 
 O XGEN busca as imagens da conversa direto na API do OpenWebUI. Configure uma vez:

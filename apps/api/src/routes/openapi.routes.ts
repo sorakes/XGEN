@@ -33,6 +33,22 @@ openapiRouter.get('/', (req, res) => {
                       enum: ["auto", "literal", "criativo"],
                       description: "'literal' = so organizar o material enviado (ex: juntar imagens num PDF); 'criativo' = criar o documento com conteudo; 'auto' = o XGEN decide.",
                     },
+                    detailLevel: {
+                      type: "string",
+                      enum: ["simples", "avancado"],
+                      description: "Nivel do documento escolhido pelo usuario: 'simples' (curto) ou 'avancado' (completo).",
+                    },
+                    imageSource: {
+                      type: "string",
+                      enum: ["nenhuma", "enviadas", "banco", "ia"],
+                      description: "Imagens: 'nenhuma', 'enviadas' (so as anexadas), 'banco' (fotos reais do Pexels) ou 'ia' (geradas por IA).",
+                    },
+                    extraImages: {
+                      type: "integer",
+                      minimum: 0,
+                      maximum: 8,
+                      description: "Quantas imagens buscar/gerar ALEM das anexadas (0 a 8).",
+                    },
                     images: {
                       type: "array",
                       items: { type: "string" },

@@ -6,6 +6,10 @@ import type { ImageInsight } from '../types';
 
 export const PAGE_CLASS = 'xgen-page';
 
+/** Delimitam os slides no HTML final: o editor web separa/junta os slides por eles. */
+export const SLIDES_START = '<!--xgen:slides-->';
+export const SLIDES_END = '<!--/xgen:slides-->';
+
 const PLACEHOLDER_RE = /<img\b[^>]*\bdata-xgen-img\s*=\s*["']?([\w-]+)["']?[^>]*>/gi;
 
 /**
@@ -79,7 +83,9 @@ export function assembleDocument(plan: DocumentPlan, pageHtmls: string[], images
 </style>
 </head>
 <body>
+${SLIDES_START}
 ${pages}
+${SLIDES_END}
 <script>
   // Gráficos precisam estar estáticos e no tamanho do contêiner no momento
   // da captura — animação em curso vira gráfico pela metade no PDF.

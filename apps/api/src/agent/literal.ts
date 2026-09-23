@@ -1,5 +1,6 @@
 import type { LiteralLayout } from './intent';
 import { SHEETS } from './format';
+import { SLIDES_START, SLIDES_END } from './assemble';
 import { assetToDataUrl } from '../services/images.service';
 import type { DocumentType, ImageInsight, PageFormat } from '../types';
 
@@ -77,7 +78,9 @@ export function buildLiteralHtml(images: ImageInsight[], format: PageFormat, lay
 </style>
 </head>
 <body>
+${SLIDES_START}
 ${pages.join('\n')}
+${SLIDES_END}
 </body>
 </html>`;
 }

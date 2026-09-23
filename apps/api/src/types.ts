@@ -20,6 +20,26 @@ export type PageFormat = 'A4' | 'A4L' | 'SLIDE';
  */
 export type GenerationMode = 'auto' | 'literal' | 'criativo';
 
+/** Nível de elaboração pedido pelo usuário (perguntado pelo chat antes de gerar). */
+export type DetailLevel = 'simples' | 'avancado';
+
+/**
+ * De onde vêm as imagens do documento:
+ * nenhuma  → sem imagens (tipografia e gráficos);
+ * enviadas → só as que o usuário anexou;
+ * banco    → fotos reais buscadas no Pexels;
+ * ia       → imagens geradas por IA (OpenRouter/Gemini/ComfyUI).
+ * As anexadas pelo usuário entram SEMPRE; banco/ia só acrescentam.
+ */
+export type ImageSource = 'nenhuma' | 'enviadas' | 'banco' | 'ia';
+
+/** Preferências do documento vindas da conversa com o usuário. */
+export interface GenerationBrief {
+  detailLevel: DetailLevel | null;
+  imageSource: ImageSource | null;
+  extraImages: number;
+}
+
 /** Imagem enviada pelo usuário, já normalizada e salva em disco. */
 export interface ImageAsset {
   id: string;        // 'img-1', 'img-2'... na ordem em que o usuário enviou

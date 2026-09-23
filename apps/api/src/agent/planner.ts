@@ -3,7 +3,7 @@ import { ask, extractJsonObject } from './llm';
 import { renderImageCatalog } from './vision';
 import { DESIGN_PRINCIPLES, pickStyleDirections } from './styles';
 import { SHEETS, fitsSheet } from './format';
-import type { ImageInsight, ImageRole, PageFormat } from '../types';
+import type { DetailLevel, ImageInsight, ImageRole, PageFormat } from '../types';
 
 export interface PageImage {
   id: string;      // 'img-1'...
@@ -49,7 +49,8 @@ export async function planDocument(
   model: BaseChatModel,
   instructions: string,
   format: PageFormat = 'A4',
-  images: ImageInsight[] = []
+  images: ImageInsight[] = [],
+  detailLevel: DetailLevel | null = null
 ): Promise<DocumentPlan> {
   const sheet = SHEETS[format];
   const isSlide = format === 'SLIDE';
@@ -61,11 +62,17 @@ export async function planDocument(
   const sizing = isSlide
     ? `CADA SLIDE É UMA TELA 16:9 FECHADA (1920px x 1080px). Slide não é página de relatório: UMA ideia por slide,
 título forte e curto, no máximo ~60 palavras de texto corrido por slide (dados, números grandes, gráficos
-e imagens comunicam melhor que parágrafos). Se o usuário NÃO disse quantos slides, escolha entre 6 e 12.`
+e imagens comunicam melhor que parágrafos). Se o usuário NÃO disse quantos slides, ${
+      detailLevel === 'simples' ? 'use de 4 a 5 (nível SIMPLES: direto ao ponto, só o essencial)'
+      : detailLevel === 'avancado' ? 'use de 8 a 12 (nível AVANÇADO: completo, com dados, gráficos e mais profundidade)'
+      : 'escolha entre 6 e 12'}.`
     : `CADA PÁGINA É UMA FOLHA A4 FECHADA (210mm x 297mm). O conteúdo do brief precisa CABER confortavelmente
 nessa folha — seja realista: uma folha comporta aproximadamente 400 a 600 palavras SE não houver gráficos,
 cards ou imagens. Com um gráfico ou imagem grande, comporta bem menos. NÃO empilhe conteúdo demais numa página só.
-Se o usuário NÃO disse quantas páginas, escolha entre 4 e 8 conforme o volume de conteúdo.`;
+Se o usuário NÃO disse quantas páginas, ${
+      detailLevel === 'simples' ? 'use de 2 a 4 (nível SIMPLES: direto ao ponto, só o essencial)'
+      : detailLevel === 'avancado' ? 'use de 7 a 12 (nível AVANÇADO: completo, com dados, gráficos e mais profundidade)'
+      : 'escolha entre 4 e 8 conforme o volume de conteúdo'}.`;
 
   const imageSection = images.length
     ? `

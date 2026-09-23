@@ -7,11 +7,15 @@ import { getOrCreateSettings, resolveLlmProvider } from './services/settings.ser
 import { cleanupOldAssets } from './services/images.service';
 import { runDocumentAgent } from './agent';
 import { createModel } from './agent/llm';
-import { describeImages } from './agent/vision';
+import { describeImages, knownImageInsight } from './agent/vision';
+import { planImageRequests } from './agent/imageplan';
+import { sourceImages } from './services/imagegen.service';
 import { resolveIntent } from './agent/intent';
 import { buildLiteralHtml, buildLiteralDocxHtml, literalFormat } from './agent/literal';
 import { convertToPDF, convertToPPTX, convertToDOCX, convertToXLSX } from './converters';
-import type { DocumentType, GenerationMode, ImageAsset, PageFormat } from './types';
+import { convertToEditablePPTX } from './pptx/editable';
+import { saveDeckFromHtml } from './services/decks.service';
+import type { DetailLevel, DocumentType, GenerationMode, ImageAsset, ImageSource, PageFormat } from './types';
 
 const EXTENSIONS: Record<DocumentType, string> = { PDF: 'pdf', PPTX: 'pptx', DOCX: 'docx', XLSX: 'xlsx' };
 
@@ -59,8 +63,26 @@ export function startWorker() {
       if (assets.length) {
         await onProgress(`Analisando ${assets.length} imagem(ns)...`);
         images = await describeImages(model, assets, instructions, settings.vision_enabled && needsVision);
-        console.log(`[Worker] Imagens: ${images.map(i => `${i.id}=${i.kind}/${i.suggestedRole}`).join(' ')}`);
       }
+
+      // Imagens extras pedidas pelo usuário: fotos do banco (Pexels) ou geradas por IA.
+      // Entram DEPOIS das anexadas (img-N continua a numeração).
+      const imageSource = record.image_source as ImageSource | null;
+      const detailLevel = record.detail_level as DetailLevel | null;
+      if ((imageSource === 'banco' || imageSource === 'ia') && record.extra_images > 0) {
+        await onProgress(imageSource === 'banco' ? 'Escolhendo fotos...' : 'Planejando imagens...');
+        const requests = await planImageRequests(model, instructions, record.extra_images, imageSource, images);
+        const sourced = await sourceImages(requests, imageSource, settings, images.length, onProgress);
+        const firstExtra = images.length;
+        images = images.concat(sourced.map((s, i) => knownImageInsight(
+          { ...s.asset, id: `img-${firstExtra + i + 1}` },
+          s.credit ? `${s.description} (${s.credit})` : s.description,
+          imageSource === 'banco' ? 'foto' : 'ilustracao',
+          firstExtra === 0 && i === 0
+        )));
+        console.log(`[Worker] ${sourced.length}/${requests.length} imagem(ns) ${imageSource === 'banco' ? 'do banco' : 'gerada(s) por IA'}`);
+      }
+      if (images.length) console.log(`[Worker] Imagens: ${images.map(i => `${i.id}=${i.kind}/${i.suggestedRole}`).join(' ')}`);
 
       let outputData: string;
       let pageFormat: PageFormat = documentType === 'PPTX' ? 'SLIDE' : 'A4';
@@ -81,6 +103,7 @@ export function startWorker() {
           documentType,
           maxRetries: settings.max_retries,
           images,
+          detailLevel,
           visualReview: settings.visual_review,
           onProgress,
         });
@@ -97,7 +120,16 @@ export function startWorker() {
       if (documentType === 'PDF') {
         await convertToPDF(outputData, filePath, pageFormat);
       } else if (documentType === 'PPTX') {
-        await convertToPPTX(outputData, filePath, instructions.slice(0, 120));
+        const title = instructions.slice(0, 120);
+        // Guarda os slides para o editor web (link "Editar" na resposta do chat).
+        saveDeckFromHtml(jobId, title, outputData);
+        try {
+          await convertToEditablePPTX(outputData, filePath, title);
+        } catch (error) {
+          // O PPTX editável é o padrão; se a extração falhar, entrega o de imagens.
+          console.error('[Worker] PPTX editável falhou, gerando versão em imagem:', error);
+          await convertToPPTX(outputData, filePath, title);
+        }
       } else if (documentType === 'DOCX') {
         await convertToDOCX(outputData, filePath, images);
       } else {

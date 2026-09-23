@@ -1,6 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // O editor de PPTX salva slides com imagens embutidas (data URL): corpo grande.
+  experimental: {
+    proxyClientMaxBodySize: '80mb',
+    // Exportar o PPTX editável de uma apresentação grande passa de 30s (padrão).
+    proxyTimeout: 5 * 60 * 1000,
+  },
   async rewrites() {
     return [
       {

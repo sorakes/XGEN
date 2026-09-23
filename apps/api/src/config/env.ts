@@ -3,6 +3,10 @@ export const PUBLIC_API_URL = process.env.PUBLIC_API_URL || "http://host.docker.
 
 export const PORT = process.env.PORT || 3001;
 
+// URL pública do painel web (Next.js, porta 3000), onde fica o editor de PPTX.
+// Sem configuração, assume o mesmo host da API trocando a porta 3001 pela 3000.
+export const PUBLIC_WEB_URL = (process.env.PUBLIC_WEB_URL || PUBLIC_API_URL.replace(/:3001(?=\/|$)/, ':3000')).replace(/\/+$/, '');
+
 export const redisConnection = {
   host: process.env.REDIS_HOST || 'localhost',
   port: Number(process.env.REDIS_PORT) || 6379,

@@ -135,6 +135,18 @@ function heuristicInsight(a: ImageAsset): ImageInsight {
   };
 }
 
+/** Imagem buscada/gerada pelo XGEN: já sabemos o que ela mostra. */
+export function knownImageInsight(asset: ImageAsset, description: string, kind: ImageKind, isCover: boolean): ImageInsight {
+  const base = heuristicInsight(asset);
+  const landscape = asset.width / asset.height >= 1.2;
+  return {
+    ...base,
+    description,
+    kind,
+    suggestedRole: isCover && landscape ? 'background' : landscape ? 'hero' : 'inline',
+  };
+}
+
 /** Maneira de recortar a imagem sem estragar o conteúdo dela. */
 export function fitFor(image: ImageInsight, role: ImageRole): 'cover' | 'contain' {
   if (role === 'logo' || image.kind === 'logo' || image.hasText) return 'contain';

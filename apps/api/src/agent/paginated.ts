@@ -7,7 +7,7 @@ import { digestPage, type PageDigest } from './digest';
 import { SHEETS } from './format';
 import { reviewPagesVisually } from './review';
 import { measurePageOverflow, type PageOverflow } from '../converters';
-import type { ImageInsight, PageFormat } from '../types';
+import type { DetailLevel, ImageInsight, PageFormat } from '../types';
 
 export type ProgressCallback = (step: string) => Promise<void>;
 
@@ -20,6 +20,7 @@ const OVERFLOW_TOLERANCE_PX = 4;
 export interface PaginatedOptions {
   format: PageFormat;
   images?: ImageInsight[];
+  detailLevel?: DetailLevel | null;
   visualReview?: boolean;
   onProgress?: ProgressCallback;
 }
@@ -43,7 +44,7 @@ export async function runPaginatedAgent(
   maxRetries: number,
   options: PaginatedOptions
 ): Promise<string> {
-  const { format, images = [], visualReview = false, onProgress } = options;
+  const { format, images = [], detailLevel = null, visualReview = false, onProgress } = options;
   const sheet = SHEETS[format];
   const noun = format === 'SLIDE' ? 'slide' : 'página';
 
@@ -53,7 +54,7 @@ export async function runPaginatedAgent(
   };
 
   await report(format === 'SLIDE' ? 'Planejando os slides...' : 'Planejando as páginas...');
-  const plan = await planDocument(model, instructions, format, images);
+  const plan = await planDocument(model, instructions, format, images, detailLevel);
   const total = plan.pages.length;
   await report(`Plano pronto: ${total} ${noun}s. Desenhando...`);
 

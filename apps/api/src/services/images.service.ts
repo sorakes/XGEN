@@ -231,7 +231,7 @@ async function loadChatFile(file: any, owui: OpenWebUIConfig): Promise<Buffer> {
  * Corrige a rotação EXIF (foto de celular deitada), remove metadados, limita
  * o lado maior e salva como JPEG (ou PNG quando há transparência — logos).
  */
-async function normalizeImage(input: Buffer, index: number): Promise<ImageAsset> {
+export async function normalizeImage(input: Buffer, index: number): Promise<ImageAsset> {
   const pipeline = sharp(input, { failOn: 'error', limitInputPixels: 100_000_000 })
     .rotate()
     .resize({ width: MAX_IMAGE_SIDE_PX, height: MAX_IMAGE_SIDE_PX, fit: 'inside', withoutEnlargement: true });

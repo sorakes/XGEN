@@ -33,8 +33,10 @@ model Settings {
   comfyui_url       String?   @default("http://localhost:8188")
   comfyui_workflow  String?   // JSON do workflow ComfyUI
   gemini_img_key    String?   // Google Gemini Image Generation
-  
-  active_image      String    @default("pexels") // 'pexels' | 'comfyui' | 'gemini'
+  gemini_img_model  String?   @default("gemini-2.5-flash-image")
+  openrouter_img_model String? @default("google/gemini-3.1-flash-image") // usa a openrouter_key
+
+  active_image      String    @default("pexels") // provedor de imagens GERADAS POR IA: 'openrouter' | 'gemini' | 'comfyui' (o Pexels é o banco de fotos)
   
   // --- OpenWebUI (busca das imagens anexadas no chat) ---
   openwebui_url     String?   // ex: http://host.docker.internal:8080
@@ -56,6 +58,9 @@ model DocumentJob {
   file_type    String   // 'PDF', 'PPTX', 'DOCX', 'XLSX'
   images       String?  // JSON de ImageAsset[] (imagens enviadas pelo usuário)
   mode         String   @default("auto") // 'auto' | 'literal' | 'criativo'
+  detail_level String?  // 'simples' | 'avancado'
+  image_source String?  // 'nenhuma' | 'enviadas' | 'banco' | 'ia'
+  extra_images Int      @default(0) // quantas imagens buscar/gerar além das enviadas
   file_url     String?
   error_log    String?
   createdAt    DateTime @default(now())

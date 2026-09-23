@@ -17,7 +17,8 @@ interface SettingsData {
   active_llm: string;
   pexels_key: string;
   comfyui_url: string; comfyui_workflow: string;
-  gemini_img_key: string;
+  gemini_img_key: string; gemini_img_model: string;
+  openrouter_img_model: string;
   active_image: string;
   openwebui_url: string; openwebui_api_key: string;
   max_retries: number;
@@ -40,7 +41,8 @@ const defaults: SettingsData = {
   google_key: '', google_model: 'gemini-2.0-flash',
   active_llm: 'openai',
   pexels_key: '', comfyui_url: 'http://localhost:8188', comfyui_workflow: '',
-  gemini_img_key: '', active_image: 'pexels',
+  gemini_img_key: '', gemini_img_model: 'gemini-2.5-flash-image',
+  openrouter_img_model: 'google/gemini-3.1-flash-image', active_image: 'openrouter',
   openwebui_url: '', openwebui_api_key: '',
   max_retries: 3, vision_enabled: true, visual_review: false,
 };
@@ -90,6 +92,35 @@ export default function XGenDashboard() {
   };
 
   const set = (key: keyof SettingsData, val: any) => setData(prev => ({ ...prev, [key]: val }));
+  const aiProvider = data.active_image === 'pexels' ? 'openrouter' : data.active_image;
+
+  // Salva e busca/gera UMA imagem com a configuração atual, mostrando a prévia.
+  const TestImage = ({ source }: { source: 'banco' | 'ia' }) => {
+    const [state, setState] = useState<{ loading: boolean; preview?: string; credit?: string; error?: string }>({ loading: false });
+    const run = async () => {
+      setState({ loading: true });
+      try {
+        await fetch(`${API}/api/settings`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+        const res = await fetch(`${API}/api/settings/test-image`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source }),
+        });
+        const out = await res.json();
+        setState(out.ok ? { loading: false, preview: out.dataUrl, credit: out.credit } : { loading: false, error: out.error });
+      } catch (e: any) {
+        setState({ loading: false, error: e.message });
+      }
+    };
+    return (
+      <div className="flex items-center gap-3 normal-case tracking-normal">
+        {state.preview && <img src={state.preview} alt="Prévia" title={state.credit} className="h-10 rounded border border-neutral-700" />}
+        {state.error && <span className="text-[11px] text-red-400 max-w-xs truncate" title={state.error}>{state.error}</span>}
+        <button type="button" onClick={run} disabled={state.loading}
+          className="text-xs px-3 py-1 rounded-full border border-neutral-700 text-neutral-300 hover:border-indigo-500 hover:text-indigo-300 disabled:opacity-50 flex items-center gap-1">
+          {state.loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <ImageIcon className="w-3 h-3" />} Testar
+        </button>
+      </div>
+    );
+  };
 
   const statusBadge = (s: string) => {
     const map: Record<string, string> = {
@@ -232,21 +263,42 @@ export default function XGenDashboard() {
             {/* TAB: IMAGE */}
             {activeTab === 'image' && (
               <div className="space-y-4">
-                <ProviderCard title="Pexels (Stock Images)" icon={ImageIcon} active={data.active_image === 'pexels'} onActivate={() => set('active_image', 'pexels')}>
-                  <Input label="API Key" value={data.pexels_key} onChange={(v: string) => set('pexels_key', v)} type="password" placeholder="Pexels API token" />
-                </ProviderCard>
+                <p className="text-xs text-neutral-500 leading-snug">
+                  Antes de gerar, o chat pergunta ao usuário se ele quer imagens: <b>fotos reais</b> (banco Pexels) ou <b>geradas por IA</b>,
+                  e quantas. As imagens que ele anexar na conversa entram sempre.
+                </p>
 
-                <ProviderCard title="ComfyUI (Local Generation)" icon={Palette} active={data.active_image === 'comfyui'} onActivate={() => set('active_image', 'comfyui')}>
-                  <Input label="Server URL" value={data.comfyui_url} onChange={(v: string) => set('comfyui_url', v)} placeholder="http://localhost:8188" />
-                  <div>
-                    <label className="text-xs text-neutral-500 mb-1 block">Workflow JSON (Optional)</label>
-                    <textarea value={data.comfyui_workflow} onChange={(e) => set('comfyui_workflow', e.target.value)}
-                      className="input-premium min-h-[80px] resize-y" placeholder='{"3": {"class_type": "KSampler", ...}}' />
+                <div className="glass-panel p-5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-sm text-white flex items-center gap-2"><ImageIcon className="w-4 h-4 text-indigo-400" /> Banco de fotos — Pexels</h3>
+                    <TestImage source="banco" />
                   </div>
+                  <Input label="API Key" value={data.pexels_key} onChange={(v: string) => set('pexels_key', v)} type="password" placeholder="Pexels API token (pexels.com/api)" />
+                </div>
+
+                <h4 className="text-xs text-neutral-400 font-semibold uppercase tracking-widest pt-2 flex items-center justify-between">
+                  <span>Imagens geradas por IA — provedor ativo</span>
+                  <TestImage source="ia" />
+                </h4>
+
+                <ProviderCard title="OpenRouter (usa a chave do LLM)" icon={Globe} active={aiProvider === 'openrouter'} onActivate={() => set('active_image', 'openrouter')}>
+                  <Input label="Modelo de imagem" value={data.openrouter_img_model} onChange={(v: string) => set('openrouter_img_model', v)} placeholder="google/gemini-3.1-flash-image" />
+                  <p className="text-[11px] text-neutral-500">Usa a API key do card OpenRouter da aba LLM Providers.</p>
                 </ProviderCard>
 
-                <ProviderCard title="Google Gemini (AI Images)" icon={Zap} active={data.active_image === 'gemini'} onActivate={() => set('active_image', 'gemini')}>
+                <ProviderCard title="Google Gemini (chave própria)" icon={Zap} active={aiProvider === 'gemini'} onActivate={() => set('active_image', 'gemini')}>
                   <Input label="Gemini API Key" value={data.gemini_img_key} onChange={(v: string) => set('gemini_img_key', v)} type="password" placeholder="AIza..." />
+                  <Input label="Modelo" value={data.gemini_img_model} onChange={(v: string) => set('gemini_img_model', v)} placeholder="gemini-2.5-flash-image" />
+                </ProviderCard>
+
+                <ProviderCard title="ComfyUI (local)" icon={Palette} active={aiProvider === 'comfyui'} onActivate={() => set('active_image', 'comfyui')}>
+                  <Input label="Server URL" value={data.comfyui_url} onChange={(v: string) => set('comfyui_url', v)} placeholder="http://host.docker.internal:8188" />
+                  <div>
+                    <label className="text-xs text-neutral-500 mb-1 block">Workflow JSON (formato API do ComfyUI)</label>
+                    <textarea value={data.comfyui_workflow} onChange={(e) => set('comfyui_workflow', e.target.value)}
+                      className="input-premium min-h-[80px] resize-y" placeholder='{"6": {"inputs": {"text": "{{PROMPT}}"}, "class_type": "CLIPTextEncode"}, ...}' />
+                    <p className="text-[11px] text-neutral-500 mt-1">Use {'{{PROMPT}}'} onde entra o texto; opcional {'{{WIDTH}}'} e {'{{HEIGHT}}'}.</p>
+                  </div>
                 </ProviderCard>
               </div>
             )}
@@ -291,7 +343,7 @@ export default function XGenDashboard() {
                     </div>
                     <div className="bg-neutral-900/50 rounded-lg p-3 border border-neutral-800">
                       <span className="text-neutral-500">Active Image</span>
-                      <p className="text-indigo-400 font-semibold mt-1 capitalize">{data.active_image}</p>
+                      <p className="text-indigo-400 font-semibold mt-1 capitalize">{aiProvider}</p>
                     </div>
                   </div>
                 </div>

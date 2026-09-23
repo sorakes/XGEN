@@ -4,7 +4,7 @@ import type { BaseChatModel } from "@langchain/core/language_models/chat_models"
 import { extractPureHtml, extractPureJson } from './agent/llm';
 import { runPaginatedAgent } from './agent/paginated';
 import { renderImageCatalog } from './agent/vision';
-import type { DocumentType, ImageInsight } from './types';
+import type { DetailLevel, DocumentType, ImageInsight } from './types';
 
 export type ProgressCallback = (step: string) => Promise<void>;
 
@@ -23,12 +23,13 @@ export interface DocumentAgentOptions {
   documentType: DocumentType;
   maxRetries: number;
   images?: ImageInsight[];
+  detailLevel?: DetailLevel | null;
   visualReview?: boolean;
   onProgress?: ProgressCallback;
 }
 
 export async function runDocumentAgent({
-  model, instructions, documentType, maxRetries, images = [], visualReview = false, onProgress,
+  model, instructions, documentType, maxRetries, images = [], detailLevel = null, visualReview = false, onProgress,
 }: DocumentAgentOptions) {
   // PDF e PPTX usam a arquitetura paginada: cada folha A4 / slide 16:9 é
   // desenhado como uma caixa fechada e o transbordo é medido no browser.
@@ -37,6 +38,7 @@ export async function runDocumentAgent({
     return runPaginatedAgent(model, instructions, maxRetries, {
       format: documentType === 'PPTX' ? 'SLIDE' : 'A4',
       images,
+      detailLevel,
       visualReview,
       onProgress,
     });
@@ -95,7 +97,7 @@ ${imageCatalog}
    - Exemplo: <img src="https://quickchart.io/chart?c={type:'bar',data:{labels:['Jan','Fev'],datasets:[{label:'Vendas',data:[10,20]}]}}" width="500" height="300" />
 7. Retorne EXCLUSIVAMENTE código HTML puro entre <!DOCTYPE html> e </html>.
 
-8. Escreva no MESMO idioma das instruções do usuário. NÃO invente dados específicos (métricas, clientes, preços,
+${detailLevel === 'simples' ? '9. NÍVEL SIMPLES: documento curto e direto (cerca de 2 a 3 páginas), só o essencial.\n' : detailLevel === 'avancado' ? '9. NÍVEL AVANÇADO: documento completo (cerca de 6 a 10 páginas), com seções, tabelas, dados e gráficos.\n' : ''}8. Escreva no MESMO idioma das instruções do usuário. NÃO invente dados específicos (métricas, clientes, preços,
    nomes, e-mails, telefones) que não foram fornecidos: use marcadores entre colchetes, ex: [00%].
 
 Instruções do usuário: ${state.instructions}`;

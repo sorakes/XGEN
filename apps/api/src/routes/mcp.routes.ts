@@ -26,10 +26,16 @@ function buildServer(headers: Record<string, any>): McpServer {
           .describe("'literal' = so organizar o material enviado; 'criativo' = criar o documento com conteudo; 'auto' = o XGEN decide."),
         images: z.array(z.string()).optional()
           .describe('Opcional. URLs publicas (http/https) de imagens extras. Imagens anexadas no chat NAO precisam ser listadas.'),
+        detailLevel: z.enum(['simples', 'avancado']).optional()
+          .describe("Nivel do documento escolhido pelo usuario: 'simples' (curto) ou 'avancado' (completo)."),
+        imageSource: z.enum(['nenhuma', 'enviadas', 'banco', 'ia']).optional()
+          .describe("Imagens: 'nenhuma', 'enviadas' (so as anexadas), 'banco' (fotos reais do Pexels) ou 'ia' (geradas por IA)."),
+        extraImages: z.number().int().min(0).max(8).optional()
+          .describe('Quantas imagens buscar/gerar ALEM das anexadas (0 a 8).'),
       },
     },
-    async ({ documentType, instructions, mode, images }) => {
-      const result = await generateAndWait({ documentType, instructions, mode, images, headers });
+    async ({ documentType, instructions, mode, images, detailLevel, imageSource, extraImages }) => {
+      const result = await generateAndWait({ documentType, instructions, mode, images, detailLevel, imageSource, extraImages, headers });
       return result.ok
         ? { content: [{ type: 'text' as const, text: result.message }] }
         : { content: [{ type: 'text' as const, text: result.error }], isError: true };

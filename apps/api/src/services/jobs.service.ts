@@ -1,15 +1,17 @@
 import { prisma } from '../lib/prisma';
 import { documentQueue } from '../queue';
 import { JOB_DEDUP_WINDOW_MS } from '../config/env';
-import type { DocumentType, GenerationMode, ImageAsset } from '../types';
+import type { DocumentType, GenerationBrief, GenerationMode, ImageAsset } from '../types';
 
 // Serializa criações concorrentes com a MESMA chave (tipo+instruções+imagens) dentro
 // deste processo, fechando a race condition entre "checar se existe" e
 // "criar": duas chamadas simultâneas do mesmo pedido só criam 1 job.
 const inFlight = new Map<string, Promise<any>>();
 
-function dedupKey(documentType: DocumentType, instructions: string, imagesJson: string | null, mode: GenerationMode) {
-  return `${documentType}::${mode}::${instructions}::${imagesJson ?? ''}`;
+const NO_BRIEF: GenerationBrief = { detailLevel: null, imageSource: null, extraImages: 0 };
+
+function dedupKey(documentType: DocumentType, instructions: string, imagesJson: string | null, mode: GenerationMode, brief: GenerationBrief) {
+  return `${documentType}::${mode}::${brief.detailLevel}::${brief.imageSource}::${brief.extraImages}::${instructions}::${imagesJson ?? ''}`;
 }
 
 /**
@@ -21,14 +23,15 @@ export async function createOrReuseJob(
   documentType: DocumentType,
   instructions: string,
   images: ImageAsset[] = [],
-  mode: GenerationMode = 'auto'
+  mode: GenerationMode = 'auto',
+  brief: GenerationBrief = NO_BRIEF
 ) {
   const imagesJson = images.length ? JSON.stringify(images) : null;
-  const key = dedupKey(documentType, instructions, imagesJson, mode);
+  const key = dedupKey(documentType, instructions, imagesJson, mode, brief);
   const pending = inFlight.get(key);
   if (pending) return pending;
 
-  const task = createOrReuseJobUnsafe(documentType, instructions, imagesJson, mode).finally(() => {
+  const task = createOrReuseJobUnsafe(documentType, instructions, imagesJson, mode, brief).finally(() => {
     inFlight.delete(key);
   });
   inFlight.set(key, task);
@@ -39,7 +42,8 @@ async function createOrReuseJobUnsafe(
   documentType: DocumentType,
   instructions: string,
   imagesJson: string | null,
-  mode: GenerationMode
+  mode: GenerationMode,
+  brief: GenerationBrief
 ) {
   const existing = await prisma.documentJob.findFirst({
     where: {
@@ -47,6 +51,9 @@ async function createOrReuseJobUnsafe(
       prompt: instructions,
       images: imagesJson,
       mode,
+      detail_level: brief.detailLevel,
+      image_source: brief.imageSource,
+      extra_images: brief.extraImages,
       status: { in: ['queued', 'processing'] },
       createdAt: { gte: new Date(Date.now() - JOB_DEDUP_WINDOW_MS) },
     },
@@ -58,7 +65,9 @@ async function createOrReuseJobUnsafe(
   }
 
   const job = await prisma.documentJob.create({
-    data: { status: 'queued', file_type: documentType, prompt: instructions, images: imagesJson, mode, current_step: 'Na fila' },
+    data: { status: 'queued', file_type: documentType, prompt: instructions, images: imagesJson, mode,
+      detail_level: brief.detailLevel, image_source: brief.imageSource, extra_images: brief.extraImages,
+      current_step: 'Na fila' },
   });
   // Instruções e imagens ficam no registro do job; a fila só carrega a referência.
   await documentQueue.add('generate', { jobId: job.id, documentType }, { jobId: job.id });

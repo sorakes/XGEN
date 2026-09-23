@@ -6,8 +6,10 @@ export const generateRouter = Router();
 
 // --- O BLOQUEIO SÍNCRONO (TRAVA O OPENWEBUI NO CALLING TOOL) ---
 generateRouter.post('/', asyncHandler(async (req, res) => {
-  const { documentType, instructions, mode, images } = req.body;
-  const result = await generateAndWait({ documentType, instructions, mode, images, headers: req.headers });
+  const { documentType, instructions, mode, images, detailLevel, imageSource, extraImages } = req.body;
+  const result = await generateAndWait({
+    documentType, instructions, mode, images, detailLevel, imageSource, extraImages, headers: req.headers,
+  });
 
   if (result.ok) {
     res.json({ success: true, message: result.message });

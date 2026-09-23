@@ -8,7 +8,24 @@ import { SHEETS } from './agent/format';
 import { assetToDataUrl } from './services/images.service';
 import type { ImageInsight, PageFormat } from './types';
 
-const LAUNCH_ARGS = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'];
+export const LAUNCH_ARGS = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'];
+
+/**
+ * Chromium para HTML que veio de fora (editor web: qualquer um com o link).
+ * Toda requisição de rede vai para um proxy inexistente, exceto os CDNs de
+ * que os slides precisam — assim o HTML não alcança a rede interna, nem por
+ * IP nem por localhost (<-loopback> tira o bypass automático do loopback).
+ * data: URLs (as imagens embutidas) não passam por rede e seguem normais.
+ *
+ * (Interceptar requisições pelo Puppeteer não serve: cada imagem embutida
+ * atravessaria o protocolo de depuração inteira e a página não carregava.)
+ */
+const ALLOWED_HOSTS = ['cdn.tailwindcss.com', 'cdn.jsdelivr.net', 'fonts.googleapis.com', 'fonts.gstatic.com'];
+export const RESTRICTED_LAUNCH_ARGS = [
+  ...LAUNCH_ARGS,
+  '--proxy-server=http://127.0.0.1:9',
+  `--proxy-bypass-list=<-loopback>;${ALLOWED_HOSTS.join(';')}`,
+];
 
 // A4 em pixels CSS a 96dpi (210mm x 297mm). O viewport PRECISA bater com a
 // folha: no viewport padrão (800px) qualquer 100vw/w-screen já vaza alguns
@@ -17,7 +34,12 @@ export const A4_WIDTH_PX = SHEETS.A4.widthPx;   // 794
 export const A4_HEIGHT_PX = SHEETS.A4.heightPx; // 1123
 
 /** Carrega o HTML e espera CDNs (Tailwind/Chart.js), fontes, imagens e layout estabilizarem. */
-async function loadPage(browser: Browser, htmlContent: string, format: PageFormat = 'A4', scale = 2): Promise<Page> {
+async function loadPage(
+  browser: Browser,
+  htmlContent: string,
+  format: PageFormat = 'A4',
+  scale = 2
+): Promise<Page> {
   const sheet = SHEETS[format];
   const page = await browser.newPage();
   await page.setViewport({ width: sheet.widthPx, height: sheet.heightPx, deviceScaleFactor: scale });
@@ -247,6 +269,11 @@ export async function measurePageOverflow(htmlContent: string, format: PageForma
   } finally {
     await browser.close();
   }
+}
+
+/** Abre o HTML numa página; use com um browser lançado com RESTRICTED_LAUNCH_ARGS. */
+export function openRestrictedPage(browser: Browser, htmlContent: string, format: PageFormat, scale = 1): Promise<Page> {
+  return loadPage(browser, htmlContent, format, scale);
 }
 
 /** Screenshot de cada .xgen-page (usado no PPTX e na crítica visual). */
