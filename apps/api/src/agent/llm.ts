@@ -24,7 +24,34 @@ export function createModel({ llmKey, modelName, provider, baseUrl }: LlmOptions
 
 export async function ask(model: BaseChatModel, system: string, user: string): Promise<string> {
   const response = await model.invoke([new SystemMessage(system), new HumanMessage(user)]);
-  return response.content as string;
+  return contentToText(response.content);
+}
+
+/**
+ * Pergunta multimodal: texto + imagens (data URLs). O formato image_url é
+ * aceito pelos adaptadores OpenAI (OpenAI/OpenRouter/Ollama) e Gemini.
+ */
+export async function askWithImages(
+  model: BaseChatModel,
+  system: string,
+  user: string,
+  imageDataUrls: string[]
+): Promise<string> {
+  const content = [
+    { type: 'text', text: user },
+    ...imageDataUrls.map(url => ({ type: 'image_url', image_url: { url } })),
+  ];
+  const response = await model.invoke([new SystemMessage(system), new HumanMessage({ content } as any)]);
+  return contentToText(response.content);
+}
+
+/** Alguns provedores devolvem o conteúdo como lista de partes. */
+function contentToText(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content.map((part: any) => (typeof part === 'string' ? part : part?.text ?? '')).join('');
+  }
+  return String(content ?? '');
 }
 
 function stripFences(raw: string): string {
@@ -79,10 +106,16 @@ export function extractHtmlFragment(raw: string): string {
   return clean.trim();
 }
 
-/** Extrai um ARRAY JSON (usado no fluxo XLSX). */
+/**
+ * Extrai o JSON do fluxo XLSX: um ARRAY de linhas (formato antigo) ou um
+ * OBJETO {sheets: [...]} (várias abas) — o que aparecer primeiro.
+ */
 export function extractPureJson(raw: string): string {
   const clean = stripFences(raw);
-  const match = clean.match(/(\[[\s\S]*\])/);
+  const firstArray = clean.indexOf('[');
+  const firstObject = clean.indexOf('{');
+  const objectFirst = firstObject !== -1 && (firstArray === -1 || firstObject < firstArray);
+  const match = objectFirst ? clean.match(/(\{[\s\S]*\})/) : clean.match(/(\[[\s\S]*\])/);
   if (match) return match[1].trim();
   return clean.trim();
 }

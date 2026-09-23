@@ -1,7 +1,10 @@
 import { StateGraph, Annotation, END, START } from "@langchain/langgraph";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
-import { createModel, extractPureHtml, extractPureJson } from './agent/llm';
-import { runPaginatedPdfAgent } from './agent/paginated';
+import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
+import { extractPureHtml, extractPureJson } from './agent/llm';
+import { runPaginatedAgent } from './agent/paginated';
+import { renderImageCatalog } from './agent/vision';
+import type { DocumentType, ImageInsight } from './types';
 
 export type ProgressCallback = (step: string) => Promise<void>;
 
@@ -14,23 +17,32 @@ const StateAnnotation = Annotation.Root({
   maxRetries: Annotation<number>({ reducer: (x, y) => y ?? x, default: () => 3 }),
 });
 
-export async function runDocumentAgent(
-  instructions: string,
-  documentType: string,
-  maxRetries: number,
-  llmKey: string,
-  modelName: string = "gpt-4o",
-  provider: string = "openai",
-  baseUrl?: string,
-  onProgress?: ProgressCallback
-) {
-  const model = createModel({ llmKey, modelName, provider, baseUrl });
+export interface DocumentAgentOptions {
+  model: BaseChatModel;
+  instructions: string;
+  documentType: DocumentType;
+  maxRetries: number;
+  images?: ImageInsight[];
+  visualReview?: boolean;
+  onProgress?: ProgressCallback;
+}
 
-  // PDF usa a arquitetura paginada: cada folha A4 é desenhada como uma caixa
-  // fechada e o transbordo é medido no browser. Ver agent/paginated.ts.
-  if (documentType === 'PDF') {
-    return runPaginatedPdfAgent(model, instructions, maxRetries, onProgress);
+export async function runDocumentAgent({
+  model, instructions, documentType, maxRetries, images = [], visualReview = false, onProgress,
+}: DocumentAgentOptions) {
+  // PDF e PPTX usam a arquitetura paginada: cada folha A4 / slide 16:9 é
+  // desenhado como uma caixa fechada e o transbordo é medido no browser.
+  // Ver agent/paginated.ts.
+  if (documentType === 'PDF' || documentType === 'PPTX') {
+    return runPaginatedAgent(model, instructions, maxRetries, {
+      format: documentType === 'PPTX' ? 'SLIDE' : 'A4',
+      images,
+      visualReview,
+      onProgress,
+    });
   }
+
+  const imageCatalog = images.length ? renderImageCatalog(images) : '';
 
   // DOCX e XLSX seguem no fluxo de documento único (não têm o problema de
   // quebra de página: o Word repagina sozinho e o Excel não tem páginas).
@@ -43,9 +55,17 @@ export async function runDocumentAgent(
 
     if (state.documentType === 'XLSX') {
       prompt = `Você é um Analista Financeiro e de Dados Sênior.
-REGRA ABSOLUTA: Retorne SOMENTE o array JSON puro. NENHUM texto antes ou depois. NENHUMA explicação.
-Crie uma estrutura JSON baseada nestas instruções: ${state.instructions}.
-A saída DEVE ser APENAS um ARRAY JSON [ ... ] válido.`;
+REGRA ABSOLUTA: Retorne SOMENTE JSON puro. NENHUM texto antes ou depois. NENHUMA explicação.
+Crie a planilha baseada nestas instruções: ${state.instructions}.
+${imageCatalog ? `
+O usuário enviou imagens (o sistema as anexa numa aba própria). Se forem prints de tabelas/dados,
+TRANSCREVA os dados delas para as linhas da planilha:
+${imageCatalog}
+` : ''}
+FORMATO DA SAÍDA (escolha um):
+- Uma aba: um ARRAY de objetos [ {"Coluna": valor, ...}, ... ]
+- Várias abas: {"sheets": [ {"name": "Nome da aba", "rows": [ {"Coluna": valor}, ... ]} ]}
+Números devem ser números JSON (sem aspas, sem "R$" ou "%"). Todas as linhas de uma aba com as mesmas chaves.`;
 
       if (state.criticism) {
         prompt += `\nO revisor apontou: ${state.criticism}. Corrija e retorne SOMENTE o JSON.`;
@@ -61,13 +81,22 @@ REGRAS ABSOLUTAS E INVIOLÁVEIS PARA DOCX:
 2. CSS INLINE: Formate tudo com atributos HTML (width, border) ou style="color: #...; font-size: ...;". NUNCA use classes do Tailwind. NUNCA coloque tags <style>.
 3. NENHUM ATRIBUTO XML: Não invente atributos como xmlns:w ou @click. O HTML deve ser estupidamente básico e limpo.
 4. ESTRUTURA ORGANIZADA: Use <table> com width="100%" e border="1" para criar seções. Pinte o fundo do cabeçalho da tabela (bgcolor="#f4f4f4").
-5. PROIBIDO IMAGENS DECORATIVAS: NUNCA insira fotos (Pexels, Unsplash, etc). Use APENAS gráficos de dados.
+5. PROIBIDO IMAGENS DA INTERNET: NUNCA insira fotos externas (Pexels, Unsplash, etc).${imageCatalog ? `
+   IMAGENS DO USUÁRIO — use TODAS, cada uma no ponto do texto em que faz sentido (o pedido manda: se ele disse onde, obedeça):
+${imageCatalog}
+   Insira cada uma EXATAMENTE assim, SEM src e SEM width/height (o sistema calcula o tamanho pela proporção real):
+   <p style="text-align:center"><img data-xgen-img="img-1" data-size="large" alt="descrição" /></p>
+   data-size: "small" (logo/ícone), "medium" (ilustração) ou "large" (destaque, largura total).
+   O Word não tem imagem de fundo: uma imagem pedida como fundo/capa entra como "large" no topo do documento.` : ''}
 6. GRÁFICOS OBRIGATÓRIOS: Você DEVE gerar gráficos inserindo tags de imagem apontando para a API do QuickChart.
    REGRAS DO QUICKCHART PARA EVITAR ERROS DE SINTAXE (Invalid token):
    - A URL inteira deve estar em UMA ÚNICA LINHA (zero quebras de linha dentro do src="...").
    - Use APENAS aspas simples (') dentro do bloco do gráfico.
    - Exemplo: <img src="https://quickchart.io/chart?c={type:'bar',data:{labels:['Jan','Fev'],datasets:[{label:'Vendas',data:[10,20]}]}}" width="500" height="300" />
 7. Retorne EXCLUSIVAMENTE código HTML puro entre <!DOCTYPE html> e </html>.
+
+8. Escreva no MESMO idioma das instruções do usuário. NÃO invente dados específicos (métricas, clientes, preços,
+   nomes, e-mails, telefones) que não foram fornecidos: use marcadores entre colchetes, ex: [00%].
 
 Instruções do usuário: ${state.instructions}`;
 
@@ -95,7 +124,7 @@ Instruções do usuário: ${state.instructions}`;
     let prompt = "";
 
     if (state.documentType === 'XLSX') {
-      prompt = `O texto abaixo é um array JSON válido? Se sim, responda SOMENTE: APROVADO
+      prompt = `O texto abaixo é JSON válido (um array de objetos, ou um objeto {"sheets":[{"name","rows"}]})? Se sim, responda SOMENTE: APROVADO
 Se não, liste os erros. Dados:\n${state.htmlContent}`;
     } else {
       prompt = `Aja como um Diretor de Arte exigente. Avalie o design do HTML abaixo para um documento Word.
@@ -104,6 +133,7 @@ CRITÉRIOS DE REPROVAÇÃO IMEDIATA:
 2. Falta de "esquadro": desalinhamento entre blocos, falta de uma margem padrão consistente em todo o documento.
 3. Texto encostando nas bordas laterais.
 4. Gráficos ou tabelas que parecem "quebrados" ou mal formatados.
+(Tags <img data-xgen-img="..."> sem src são marcadores válidos: o sistema insere as imagens depois. NÃO as aponte como erro.)
 
 Se estiver absolutamente perfeito e bem espaçado, responda SOMENTE a palavra: APROVADO.
 Se houver falhas de alinhamento ou espaçamento, liste-as de forma concisa para que o designer corrija.

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { PUBLIC_API_URL } from '../config/env';
+import { TOOL_DESCRIPTION } from '../services/generation.service';
 
 export const openapiRouter = Router();
 
@@ -7,14 +8,14 @@ export const openapiRouter = Router();
 openapiRouter.get('/', (req, res) => {
   res.json({
     openapi: "3.1.0",
-    info: { title: "XGEN Enterprise API", version: "1.0.0" },
+    info: { title: "XGEN Enterprise API", version: "2.0.0" },
     servers: [{ url: PUBLIC_API_URL }],
     paths: {
       "/api/generate": {
         post: {
           operationId: "generate_premium_document",
-          summary: "Gera relatorios de luxo em PDF, planilhas XLSX ou DOCX.",
-          description: "Sempre que o usuario pedir para gerar um relatorio, documento ou planilha, use esta ferramenta informando o tipo do documento e as instrucoes detalhadas. A ferramenta vai demorar cerca de 40 segundos para responder, apenas aguarde. Quando ela responder, entregue o Link de Download gerado ao usuario.",
+          summary: "Gera relatorios e documentos premium em PDF, apresentacoes PPTX, documentos DOCX ou planilhas XLSX.",
+          description: TOOL_DESCRIPTION,
           requestBody: {
             required: true,
             content: {
@@ -22,8 +23,21 @@ openapiRouter.get('/', (req, res) => {
                 schema: {
                   type: "object",
                   properties: {
-                    documentType: { type: "string", enum: ["PDF", "DOCX", "XLSX"], description: "Formato do documento." },
-                    instructions: { type: "string", description: "Todos os detalhes dos dados que vao no relatorio/planilha." }
+                    documentType: { type: "string", enum: ["PDF", "PPTX", "DOCX", "XLSX"], description: "Formato do arquivo." },
+                    instructions: {
+                      type: "string",
+                      description: "Todos os detalhes do conteudo, estilo desejado e como usar as imagens anexadas (se houver).",
+                    },
+                    mode: {
+                      type: "string",
+                      enum: ["auto", "literal", "criativo"],
+                      description: "'literal' = so organizar o material enviado (ex: juntar imagens num PDF); 'criativo' = criar o documento com conteudo; 'auto' = o XGEN decide.",
+                    },
+                    images: {
+                      type: "array",
+                      items: { type: "string" },
+                      description: "Opcional. URLs publicas (http/https) de imagens extras para usar no documento. Imagens anexadas no chat NAO precisam ser listadas aqui.",
+                    },
                   },
                   required: ["documentType", "instructions"]
                 }

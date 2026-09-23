@@ -18,3 +18,13 @@ export const GENERATE_POLL_INTERVAL_MS = 3000;
 // Janela de deduplicação: chamadas idênticas (mesmo tipo + instruções) dentro
 // desse intervalo reaproveitam o job existente em vez de criar um novo.
 export const JOB_DEDUP_WINDOW_MS = 2 * 60 * 1000; // 2 minutos
+
+// OpenWebUI: de onde buscar as imagens anexadas no chat. As settings do painel
+// têm prioridade; estas variáveis são o fallback para quem configura via compose.
+export const OPENWEBUI_URL = process.env.OPENWEBUI_URL || '';
+export const OPENWEBUI_API_KEY = process.env.OPENWEBUI_API_KEY || '';
+
+// Limites das imagens de entrada
+export const MAX_IMAGES_PER_JOB = 12;
+export const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
+export const MAX_IMAGE_SIDE_PX = 2400;

@@ -1,4 +1,5 @@
-FROM node:20-bullseye
+# Debian 11 (bullseye) saiu do suporte em 08/2026 e o apt dele quebrou: bookworm + Node 22 LTS.
+FROM node:22-bookworm
 
 # Instala dependências do SO: Redis, Supervisor e ferramentas do Chromium (para PDF)
 RUN apt-get update && apt-get install -y \
@@ -6,6 +7,9 @@ RUN apt-get update && apt-get install -y \
     supervisor \
     chromium \
     fonts-liberation \
+    fonts-noto-core \
+    fonts-noto-color-emoji \
+    fonts-roboto \
     libasound2 \
     libnss3 \
     libxss1 \
@@ -31,7 +35,7 @@ RUN npm install
 COPY . .
 
 # Inicializa o Prisma SQLite e Compila TypeScript + Next.js
-RUN cd apps/api && npx prisma generate && npx prisma db push
+RUN cd apps/api && mkdir -p data && npx prisma generate && npx prisma db push
 RUN npm run build
 
 # Copia e injeta o cérebro orquestrador

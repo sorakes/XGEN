@@ -4,7 +4,9 @@ generator client {
 
 datasource db {
   provider = "sqlite"
-  url      = "file:./dev.db"
+  // Fica em apps/api/data (volume do Docker), fora da pasta do schema: se o
+  // volume cobrisse prisma/, ele esconderia o schema.prisma novo a cada update.
+  url      = "file:../data/dev.db"
 }
 
 model Settings {
@@ -34,8 +36,14 @@ model Settings {
   
   active_image      String    @default("pexels") // 'pexels' | 'comfyui' | 'gemini'
   
+  // --- OpenWebUI (busca das imagens anexadas no chat) ---
+  openwebui_url     String?   // ex: http://host.docker.internal:8080
+  openwebui_api_key String?   // API key de um usuário admin do OpenWebUI
+
   // --- Engine ---
   max_retries       Int       @default(3)
+  vision_enabled    Boolean   @default(true)  // LLM lê as imagens para decidir onde usá-las
+  visual_review     Boolean   @default(false) // crítica visual por screenshot (mais lenta)
   
   updatedAt         DateTime  @updatedAt
 }
@@ -45,7 +53,9 @@ model DocumentJob {
   status       String   // 'queued', 'processing', 'completed', 'failed'
   current_step String?  // 'Gerando Design (1/3)', 'Revisão QA (2/3)', etc.
   prompt       String
-  file_type    String   // 'PDF', 'DOCX', 'XLSX'
+  file_type    String   // 'PDF', 'PPTX', 'DOCX', 'XLSX'
+  images       String?  // JSON de ImageAsset[] (imagens enviadas pelo usuário)
+  mode         String   @default("auto") // 'auto' | 'literal' | 'criativo'
   file_url     String?
   error_log    String?
   createdAt    DateTime @default(now())

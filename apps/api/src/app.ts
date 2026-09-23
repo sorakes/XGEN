@@ -5,12 +5,14 @@ import { settingsRouter } from './routes/settings.routes';
 import { jobsRouter } from './routes/jobs.routes';
 import { generateRouter } from './routes/generate.routes';
 import { openapiRouter } from './routes/openapi.routes';
+import { mcpRouter } from './routes/mcp.routes';
 
 export function createApp() {
   const app = express();
 
   app.use(cors());
-  app.use(express.json());
+  // Limite alto: o body pode trazer imagens em data URL (base64).
+  app.use(express.json({ limit: '80mb' }));
 
   app.use('/exports', express.static(path.join(__dirname, '..', 'exports')));
 
@@ -20,6 +22,8 @@ export function createApp() {
   app.use('/api/jobs', jobsRouter);
   app.use('/api/generate', generateRouter);
   app.use('/openapi.json', openapiRouter);
+  // MCP (Streamable HTTP). Use OU esta conexão OU a OpenAPI no OpenWebUI, não as duas.
+  app.use('/mcp', mcpRouter);
 
   return app;
 }

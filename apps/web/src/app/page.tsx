@@ -4,10 +4,10 @@ import { useEffect, useState, useCallback } from 'react';
 import { 
   Settings, Save, ShieldAlert, CheckCircle2, Loader2, KeyRound, 
   Image as ImageIcon, Repeat, Brain, Zap, Globe, Server, Palette,
-  X, Activity, FileText, Download, AlertTriangle, Clock, ChevronRight
+  X, Activity, FileText, Download, AlertTriangle, Clock, ChevronRight, Link2, Eye
 } from 'lucide-react';
 
-type TabId = 'llm' | 'image' | 'engine';
+type TabId = 'llm' | 'openwebui' | 'image' | 'engine';
 
 interface SettingsData {
   openai_key: string; openai_model: string; openai_base_url: string;
@@ -19,7 +19,10 @@ interface SettingsData {
   comfyui_url: string; comfyui_workflow: string;
   gemini_img_key: string;
   active_image: string;
+  openwebui_url: string; openwebui_api_key: string;
   max_retries: number;
+  vision_enabled: boolean;
+  visual_review: boolean;
 }
 
 interface Job {
@@ -37,7 +40,9 @@ const defaults: SettingsData = {
   google_key: '', google_model: 'gemini-2.0-flash',
   active_llm: 'openai',
   pexels_key: '', comfyui_url: 'http://localhost:8188', comfyui_workflow: '',
-  gemini_img_key: '', active_image: 'pexels', max_retries: 3,
+  gemini_img_key: '', active_image: 'pexels',
+  openwebui_url: '', openwebui_api_key: '',
+  max_retries: 3, vision_enabled: true, visual_review: false,
 };
 
 export default function XGenDashboard() {
@@ -98,6 +103,7 @@ export default function XGenDashboard() {
 
   const tabs: { id: TabId; label: string; icon: any }[] = [
     { id: 'llm', label: 'LLM Providers', icon: Brain },
+    { id: 'openwebui', label: 'OpenWebUI', icon: Link2 },
     { id: 'image', label: 'Image Providers', icon: Palette },
     { id: 'engine', label: 'Engine', icon: Zap },
   ];
@@ -128,6 +134,17 @@ export default function XGenDashboard() {
     </div>
   );
 
+  const Toggle = ({ icon: Icon, label, description, checked, onChange }: any) => (
+    <label className="flex items-start space-x-3 cursor-pointer">
+      <input type="checkbox" checked={!!checked} onChange={(e: any) => onChange(e.target.checked)}
+        className="mt-1 accent-indigo-500" />
+      <div>
+        <span className="text-sm text-white flex items-center space-x-2"><Icon className="w-3 h-3 text-indigo-400" /><span>{label}</span></span>
+        <p className="text-xs text-neutral-500 mt-1 leading-snug">{description}</p>
+      </div>
+    </label>
+  );
+
   return (
     <main className="min-h-screen p-6 lg:p-16 font-sans">
       {/* HEADER */}
@@ -138,7 +155,7 @@ export default function XGenDashboard() {
           </div>
           <div>
             <h1 className="text-2xl font-black tracking-tighter bg-gradient-to-r from-white to-neutral-400 bg-clip-text text-transparent">XGEN</h1>
-            <p className="text-xs text-neutral-500">Model Context Protocol Engine</p>
+            <p className="text-xs text-neutral-500">PDF · PPTX · DOCX · XLSX Engine</p>
           </div>
         </div>
         <button type="button" onClick={() => setDrawerOpen(true)}
@@ -191,6 +208,27 @@ export default function XGenDashboard() {
               </div>
             )}
 
+            {/* TAB: OPENWEBUI */}
+            {activeTab === 'openwebui' && (
+              <div className="glass-panel p-6 space-y-4">
+                <div className="flex items-center space-x-3 mb-2">
+                  <div className="p-2 bg-neutral-800 rounded-lg"><Link2 className="w-4 h-4 text-neutral-300" /></div>
+                  <h3 className="text-base font-semibold text-white">Imagens anexadas no chat</h3>
+                </div>
+                <p className="text-xs text-neutral-500 leading-snug">
+                  Quando o usuário anexa imagens no OpenWebUI, o XGEN busca essas imagens pela API do OpenWebUI e as usa no documento.
+                  Use a API key de um usuário <b>admin</b> (Configurações &gt; Conta &gt; Chaves de API).
+                </p>
+                <Input label="URL do OpenWebUI" value={data.openwebui_url} onChange={(v: string) => set('openwebui_url', v)} placeholder="http://host.docker.internal:8080" />
+                <Input label="API Key (admin)" value={data.openwebui_api_key} onChange={(v: string) => set('openwebui_api_key', v)} type="password" placeholder="sk-..." />
+                <div className="text-xs text-neutral-500 leading-snug bg-neutral-900/50 rounded-lg p-3 border border-neutral-800">
+                  Na conexão do XGEN no OpenWebUI (MCP em <code>/mcp</code> ou OpenAPI), preencha o campo <b>Headers</b> com:
+                  <pre className="mt-2 text-[11px] text-indigo-300 whitespace-pre-wrap">{`{"X-OpenWebUI-Chat-Id": "{{CHAT_ID}}", "X-OpenWebUI-Message-Id": "{{MESSAGE_ID}}"}`}</pre>
+                  (ou ative <code>ENABLE_FORWARD_USER_INFO_HEADERS=true</code> no OpenWebUI).
+                </div>
+              </div>
+            )}
+
             {/* TAB: IMAGE */}
             {activeTab === 'image' && (
               <div className="space-y-4">
@@ -233,6 +271,15 @@ export default function XGenDashboard() {
                   <p className="text-xs text-neutral-500 mt-3 leading-snug">
                     Quantas vezes a IA vai criticar e reescrever o design até ficar satisfeita com a qualidade visual do documento final.
                   </p>
+                </div>
+
+                <div className="pt-4 border-t border-neutral-800/50 space-y-3">
+                  <Toggle icon={Eye} label="Visão: ler as imagens enviadas"
+                    description="A LLM olha cada imagem para entender o conteúdo e decidir se vira fundo, destaque ou ilustração. Precisa de um modelo com suporte a imagens."
+                    checked={data.vision_enabled} onChange={(v: boolean) => set('vision_enabled', v)} />
+                  <Toggle icon={Eye} label="Revisão visual (PDF/PPTX)"
+                    description="Depois de montar, a LLM olha o render de cada página e refaz as que ficaram fracas. Mais lento."
+                    checked={data.visual_review} onChange={(v: boolean) => set('visual_review', v)} />
                 </div>
 
                 <div className="pt-4 border-t border-neutral-800/50">
