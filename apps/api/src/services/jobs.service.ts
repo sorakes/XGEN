@@ -11,7 +11,7 @@ const inFlight = new Map<string, Promise<any>>();
 const NO_BRIEF: GenerationBrief = { detailLevel: null, imageSource: null, extraImages: 0 };
 
 function dedupKey(documentType: DocumentType, instructions: string, imagesJson: string | null, mode: GenerationMode, brief: GenerationBrief) {
-  return `${documentType}::${mode}::${brief.detailLevel}::${brief.imageSource}::${brief.extraImages}::${instructions}::${imagesJson ?? ''}`;
+  return `${documentType}::${mode}::${brief.detailLevel}::${brief.imageSource}::${brief.extraImages}::${brief.baseDocumentId ?? ''}::${instructions}::${imagesJson ?? ''}`;
 }
 
 /**
@@ -54,6 +54,7 @@ async function createOrReuseJobUnsafe(
       detail_level: brief.detailLevel,
       image_source: brief.imageSource,
       extra_images: brief.extraImages,
+      base_document_id: brief.baseDocumentId ?? null,
       status: { in: ['queued', 'processing'] },
       createdAt: { gte: new Date(Date.now() - JOB_DEDUP_WINDOW_MS) },
     },
@@ -67,6 +68,7 @@ async function createOrReuseJobUnsafe(
   const job = await prisma.documentJob.create({
     data: { status: 'queued', file_type: documentType, prompt: instructions, images: imagesJson, mode,
       detail_level: brief.detailLevel, image_source: brief.imageSource, extra_images: brief.extraImages,
+      base_document_id: brief.baseDocumentId ?? null,
       current_step: 'Na fila' },
   });
   // Instruções e imagens ficam no registro do job; a fila só carrega a referência.

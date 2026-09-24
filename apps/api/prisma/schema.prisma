@@ -61,6 +61,7 @@ model DocumentJob {
   detail_level String?  // 'simples' | 'avancado'
   image_source String?  // 'nenhuma' | 'enviadas' | 'banco' | 'ia'
   extra_images Int      @default(0) // quantas imagens buscar/gerar além das enviadas
+  base_document_id String? // revisão: id do documento anterior que está sendo alterado
   file_url     String?
   error_log    String?
   createdAt    DateTime @default(now())

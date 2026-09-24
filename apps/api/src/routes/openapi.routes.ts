@@ -49,6 +49,10 @@ openapiRouter.get('/', (req, res) => {
                       maximum: 8,
                       description: "Quantas imagens buscar/gerar ALEM das anexadas (0 a 8).",
                     },
+                    previousDocumentId: {
+                      type: "string",
+                      description: "Para ALTERAR um documento ja gerado nesta conversa: o codigo (UUID) que aparece nos links Baixar/Editar. Em instructions, descreva so a mudanca.",
+                    },
                     images: {
                       type: "array",
                       items: { type: "string" },

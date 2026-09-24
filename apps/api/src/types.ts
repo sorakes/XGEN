@@ -38,6 +38,8 @@ export interface GenerationBrief {
   detailLevel: DetailLevel | null;
   imageSource: ImageSource | null;
   extraImages: number;
+  /** Revisão: id do documento anterior (o código que aparece nos links). */
+  baseDocumentId?: string | null;
 }
 
 /** Imagem enviada pelo usuário, já normalizada e salva em disco. */

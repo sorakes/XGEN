@@ -114,9 +114,25 @@ location /_next/  { proxy_pass http://192.168.1.100:3000; }
 location /api/decks/ { proxy_pass http://192.168.1.100:3001; client_max_body_size 80m; proxy_read_timeout 300s; }
 ```
 
+## 🔁 Alterar um documento já gerado
+
+Toda resposta traz o **ID do documento** (o mesmo código dos links). Quando o usuário pede mudanças ("coloque essas imagens de fundo", "mude o slide 3", "deixe mais curto"), o chat chama a ferramenta com `previousDocumentId`. Então o XGEN:
+- carrega os slides salvos, em vez de refazer tudo do zero;
+- aplica **só** a alteração pedida; os slides não afetados saem idênticos;
+- confere o layout das páginas alteradas;
+- devolve uma nova versão, com links novos, sem apagar a anterior.
+
+Vale para PPTX e PDF.
+
 ## 🖼️ Imagens anexadas no chat do OpenWebUI
 
-O XGEN busca as imagens da conversa direto na API do OpenWebUI. Configure uma vez:
+O OpenWebUI **não envia as imagens** para ferramentas externas; ele manda só o texto. O XGEN busca as imagens no chat.
+
+**Jeito mais simples:** na conexão do XGEN no OpenWebUI, escolha a autenticação **"Session"**. Assim o XGEN lê o chat com o login do próprio usuário, acha a conversa mais recente e descobre sozinho o endereço do OpenWebUI (`http://open-webui:8080` ou a porta 3000 do host). Não precisa de API key.
+
+Se o pedido fala em imagens anexadas e nenhuma chegar, o XGEN **não gera**: devolve ao chat o motivo, para o usuário reenviar.
+
+Alternativa (API key de admin):
 
 1. **No OpenWebUI**, gere uma API key de um usuário **admin** (`Configurações > Conta > Chaves de API`).
 2. **No painel do XGEN** (porta `3000`), aba **OpenWebUI**, preencha a URL do OpenWebUI (ex: `http://host.docker.internal:8080`) e a API key. Salve.

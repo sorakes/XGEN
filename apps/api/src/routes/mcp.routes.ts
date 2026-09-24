@@ -32,10 +32,12 @@ function buildServer(headers: Record<string, any>): McpServer {
           .describe("Imagens: 'nenhuma', 'enviadas' (so as anexadas), 'banco' (fotos reais do Pexels) ou 'ia' (geradas por IA)."),
         extraImages: z.number().int().min(0).max(8).optional()
           .describe('Quantas imagens buscar/gerar ALEM das anexadas (0 a 8).'),
+        previousDocumentId: z.string().optional()
+          .describe('Para ALTERAR um documento ja gerado nesta conversa: o codigo (UUID) que aparece nos links Baixar/Editar. Em instructions, descreva so a mudanca.'),
       },
     },
-    async ({ documentType, instructions, mode, images, detailLevel, imageSource, extraImages }) => {
-      const result = await generateAndWait({ documentType, instructions, mode, images, detailLevel, imageSource, extraImages, headers });
+    async ({ documentType, instructions, mode, images, detailLevel, imageSource, extraImages, previousDocumentId }) => {
+      const result = await generateAndWait({ documentType, instructions, mode, images, detailLevel, imageSource, extraImages, previousDocumentId, headers });
       return result.ok
         ? { content: [{ type: 'text' as const, text: result.message }] }
         : { content: [{ type: 'text' as const, text: result.error }], isError: true };

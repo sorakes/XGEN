@@ -1,8 +1,9 @@
 import { PUBLIC_API_URL, PUBLIC_WEB_URL, GENERATE_WAIT_TIMEOUT_MS, GENERATE_POLL_INTERVAL_MS } from '../config/env';
 import { createOrReuseJob, getJobById } from './jobs.service';
 import { getOrCreateSettings, resolveLlmProvider } from './settings.service';
-import { collectImages, readOpenWebUIContext } from './images.service';
+import { collectImagesWithReport, readOpenWebUIContext } from './images.service';
 import { createModel } from '../agent/llm';
+import { loadDeck } from './decks.service';
 import { resolveIntent } from '../agent/intent';
 import type { DetailLevel, DocumentType, GenerationBrief, GenerationMode, ImageSource, Settings } from '../types';
 
@@ -23,7 +24,12 @@ export const TOOL_DESCRIPTION =
   "e as IMAGENS (imageSource: 'nenhuma', 'enviadas' = so as anexadas, 'banco' = fotos reais do Pexels, 'ia' = geradas por IA; " +
   "extraImages = quantas buscar/gerar ALEM das anexadas). Se ele nao disse, a ferramenta devolve as perguntas: faca-as ao usuario " +
   "e chame de novo com as respostas. Se ele anexou imagens e pediu 'gere mais 5', use imageSource 'ia' e extraImages 5. " +
+  "ALTERAR UM DOCUMENTO JA GERADO: quando o usuario pedir mudancas num PPTX/PDF desta conversa (ex: 'coloque essas imagens de fundo', " +
+  "'mude o slide 3', 'deixe mais curto'), NAO refaca do zero: passe previousDocumentId com o codigo do documento (o UUID que aparece " +
+  "nos links Baixar/Editar, ex: 7e2718e4-a396-408d-866d-e8b85390a809) e em instructions descreva SO a mudanca pedida. " +
   "A ferramenta demora de alguns segundos (literal) a 5 minutos (criativo). Quando responder com links, entregue-os ao usuario.";
+
+const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
 const MAX_EXTRA_IMAGES = 8;
 
@@ -101,6 +107,7 @@ export interface GenerateRequest {
   detailLevel?: unknown;
   imageSource?: unknown;
   extraImages?: unknown;
+  previousDocumentId?: unknown;
   headers: Record<string, any>;
 }
 
@@ -126,15 +133,48 @@ export async function generateAndWait(request: GenerateRequest): Promise<Generat
 
   // Imagens: as do body + as anexadas no chat do OpenWebUI (via headers).
   const settings = await getOrCreateSettings();
-  const assets = await collectImages(request.images, readOpenWebUIContext(request.headers), settings);
+  const { assets, problem: imageProblem } = await collectImagesWithReport(request.images, readOpenWebUIContext(request.headers), settings);
   if (assets.length) console.log(`[Generate] ${assets.length} imagem(ns) recebida(s) para o ${documentType} (modo ${mode})`);
 
   // Preferências do documento. Se faltarem, o chat pergunta ao usuário antes
   // de gerar — exceto em planilhas e em pedidos literais ("coloque essas
   // imagens num PDF"), que não têm nível nem escolha de imagens a fazer.
   const brief = parseBrief(request);
+
+  // Revisão de um documento anterior (aceita o UUID puro ou o link inteiro).
+  const baseId = String(request.previousDocumentId ?? '').match(UUID_RE)?.[0]?.toLowerCase() || null;
+  if (request.previousDocumentId && !baseId) {
+    return { ok: true, url: '', message: 'previousDocumentId inválido: use o código (UUID) que aparece nos links Baixar/Editar do documento.' };
+  }
+  if (baseId && !loadDeck(baseId)) {
+    return {
+      ok: true,
+      url: '',
+      message:
+        `NÃO ENCONTREI o documento ${baseId} para alterar (só PPTX e PDF gerados depois da atualização do XGEN ficam guardados). ` +
+        `Explique isso ao usuário e ofereça gerar uma nova versão do zero (chame de novo SEM previousDocumentId, com o pedido completo).`,
+    };
+  }
+  brief.baseDocumentId = baseId;
+
+  // Nunca fingir: se o pedido conta com imagens anexadas e nenhuma chegou, não
+  // gera — devolve o motivo para o chat avisar o usuário.
+  const mentionsAttached = /\b(imagens?|fotos?|logos?|fundos?|branding)\b[^.]{0,60}\b(anexad|enviad|mandei|mandando|em anexo|que (te )?mand)/i.test(instructions);
+  if (!assets.length && (brief.imageSource === 'enviadas' || mentionsAttached)) {
+    console.warn(`[Generate] Pedido depende de imagens anexadas, mas nenhuma chegou: ${imageProblem || 'sem imagens no chat'}`);
+    return {
+      ok: true,
+      url: '',
+      message:
+        `NÃO GEREI O DOCUMENTO: o pedido usa imagens anexadas pelo usuário, mas nenhuma imagem chegou ao XGEN ` +
+        `(${imageProblem || 'não encontrei imagens anexadas na conversa'}). Avise o usuário com clareza — NÃO diga que ` +
+        `as imagens foram aplicadas. Peça para ele anexar as imagens de novo na mesma mensagem do pedido; se o problema ` +
+        `continuar, o administrador deve conferir a conexão do XGEN no OpenWebUI (autenticação "Session").`,
+    };
+  }
+
   let effectiveMode = mode;
-  if (documentType !== 'XLSX' && mode !== 'literal' && (!brief.detailLevel || !brief.imageSource)) {
+  if (!baseId && documentType !== 'XLSX' && mode !== 'literal' && (!brief.detailLevel || !brief.imageSource)) {
     let literal = false;
     if (mode === 'auto' && assets.length) {
       try {
@@ -150,6 +190,7 @@ export async function generateAndWait(request: GenerateRequest): Promise<Generat
     effectiveMode = 'literal';
   }
 
+  if (baseId) effectiveMode = 'criativo';
   const jobRecord = await createOrReuseJob(documentType, instructions, assets, effectiveMode, brief);
 
   const deadline = Date.now() + GENERATE_WAIT_TIMEOUT_MS;
@@ -182,13 +223,16 @@ export async function generateAndWait(request: GenerateRequest): Promise<Generat
       message:
         `${done}. Entregue os DOIS links abaixo no chat, exatamente assim, para o usuario baixar ou editar a apresentacao:
 ` +
-        `[Baixar ${documentType}](${url}) · [Editar apresentacao](${editorUrl})`,
+        `[Baixar ${documentType}](${url}) · [Editar apresentacao](${editorUrl})\n` +
+        `(ID do documento para alterações futuras: ${finalJob.id})`,
     };
   }
 
   return {
     ok: true,
     url,
-    message: `${done}. Entregue o link de download no chat para que o usuario consiga baixar o arquivo gerado: [Baixar ${documentType}](${url})`,
+    message:
+      `${done}. Entregue o link de download no chat para que o usuario consiga baixar o arquivo gerado: [Baixar ${documentType}](${url})` +
+      (documentType === 'PDF' ? `\n(ID do documento para alterações futuras: ${finalJob.id})` : ''),
   };
 }

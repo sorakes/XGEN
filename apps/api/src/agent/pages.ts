@@ -126,7 +126,7 @@ function renderZones(info: ImageInsight, plan: DocumentPlan): string[] {
  * imagem entra no layout; o sistema cuida de COMO ela é desenhada (arquivo,
  * recorte sem distorção, ponto focal) — por isso ela só escreve um marcador.
  */
-function renderImageRules(page: PagePlan, images: ImageInsight[], plan: DocumentPlan): string {
+export function renderImageRules(page: PagePlan, images: ImageInsight[], plan: DocumentPlan): string {
   const pageImages = (page.images || [])
     .map(item => ({ item, info: images.find(img => img.id === item.id) }))
     .filter((x): x is { item: typeof x.item; info: ImageInsight } => !!x.info);

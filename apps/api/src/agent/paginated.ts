@@ -68,8 +68,6 @@ export async function runPaginatedAgent(
     digests.push(digestPage(page.n, page.title, pageHtml));
   }
 
-  let html = assembleDocument(plan, pageHtmls, images);
-
   const redraw = async (index: number, repairNote: string) => {
     const pagePlan = plan.pages[index - 1];
     if (!pagePlan) return;
@@ -81,54 +79,7 @@ export async function runPaginatedAgent(
     digests[index - 1] = digestPage(pagePlan.n, pagePlan.title, fixed);
   };
 
-  // --- Ciclo de correção guiado por MEDIÇÃO, não por opinião ---
-  for (let attempt = 1; attempt <= Math.max(1, maxRetries); attempt++) {
-    await report(`Validando diagramação (${attempt}/${maxRetries})`);
-
-    let overflows: PageOverflow[];
-    try {
-      overflows = await measurePageOverflow(html, format);
-    } catch (error) {
-      console.error('[Agent] Falha ao medir transbordo, seguindo com o layout atual:', error);
-      break;
-    }
-
-    console.log(
-      '[Agent] Métricas:',
-      overflows
-        .map(o =>
-          `p${o.index}(y:${o.overflowY} x:${o.overflowX} fill:${Math.round(o.fillRatio * 100)}%` +
-          `${o.zoneOverlaps.length ? ` sobre-fundo:${o.zoneOverlaps.length}` : ''}` +
-          `${o.imageIssues.length ? ` img:${o.imageIssues.map(i => `${i.id}=${i.problem}`).join(',')}` : ''})`
-        )
-        .join(' ')
-    );
-
-    const problemsByPage = overflows
-      .map(o => ({ o, problems: describeProblems(o, plan, sheet.minFillRatio) }))
-      .filter(x => x.problems.length > 0);
-
-    if (problemsByPage.length === 0) {
-      await report('Diagramação aprovada ✅');
-      break;
-    }
-
-    if (attempt === maxRetries) {
-      console.log(`[Agent] ⚠️ Limite de correções atingido. ${problemsByPage.length} ${noun}(s) ainda com defeito.`);
-      break;
-    }
-
-    await report(`Ajustando ${problemsByPage.length} ${noun}(s) fora do padrão`);
-
-    await mapLimit(problemsByPage, REPAIR_CONCURRENCY, async ({ o, problems }) => {
-      const repairNote =
-        `Na versão anterior desta ${noun}: ${problems.join('; e ')}. ` +
-        `Redesenhe a ${noun} inteira corrigindo isso, mantendo o mesmo design system e o mesmo assunto.`;
-      await redraw(o.index, repairNote);
-    });
-
-    html = assembleDocument(plan, pageHtmls, images);
-  }
+  let html = await validateAndRepair({ plan, pageHtmls, images, maxRetries, report, redraw });
 
   // --- Crítica visual opcional (olha o render de verdade) ---
   if (visualReview) {
@@ -154,6 +105,80 @@ export async function runPaginatedAgent(
     }
   }
 
+  return html;
+}
+
+export interface RepairOptions {
+  plan: DocumentPlan;
+  pageHtmls: string[];
+  images: ImageInsight[];
+  maxRetries: number;
+  report: (step: string) => Promise<void>;
+  /** Redesenha a página `index` (1-based) aplicando a nota de correção. */
+  redraw: (index: number, repairNote: string) => Promise<void>;
+  /** Só estas páginas podem ser redesenhadas (revisão: as que o usuário mandou mudar). */
+  onlyPages?: Set<number>;
+}
+
+/**
+ * Ciclo de correção guiado por MEDIÇÃO, não por opinião: mede cada página no
+ * browser e redesenha só as que têm defeito. Usado na geração e na revisão.
+ */
+export async function validateAndRepair(options: RepairOptions): Promise<string> {
+  const { plan, pageHtmls, images, maxRetries, report, redraw, onlyPages } = options;
+  const format = plan.format;
+  const sheet = SHEETS[format];
+  const noun = format === 'SLIDE' ? 'slide' : 'página';
+  let html = assembleDocument(plan, pageHtmls, images);
+
+  for (let attempt = 1; attempt <= Math.max(1, maxRetries); attempt++) {
+    await report(`Validando diagramação (${attempt}/${maxRetries})`);
+
+    let overflows: PageOverflow[];
+    try {
+      overflows = await measurePageOverflow(html, format);
+    } catch (error) {
+      console.error('[Agent] Falha ao medir transbordo, seguindo com o layout atual:', error);
+      break;
+    }
+
+    console.log(
+      '[Agent] Métricas:',
+      overflows
+        .map(o =>
+          `p${o.index}(y:${o.overflowY} x:${o.overflowX} fill:${Math.round(o.fillRatio * 100)}%` +
+          `${o.zoneOverlaps.length ? ` sobre-fundo:${o.zoneOverlaps.length}` : ''}` +
+          `${o.imageIssues.length ? ` img:${o.imageIssues.map(i => `${i.id}=${i.problem}`).join(',')}` : ''})`
+        )
+        .join(' ')
+    );
+
+    const problemsByPage = overflows
+      .filter(o => !onlyPages || onlyPages.has(o.index))
+      .map(o => ({ o, problems: describeProblems(o, plan, sheet.minFillRatio) }))
+      .filter(x => x.problems.length > 0);
+
+    if (problemsByPage.length === 0) {
+      await report('Diagramação aprovada ✅');
+      break;
+    }
+
+    if (attempt === maxRetries) {
+      console.log(`[Agent] ⚠️ Limite de correções atingido. ${problemsByPage.length} ${noun}(s) ainda com defeito.`);
+      break;
+    }
+
+    await report(`Ajustando ${problemsByPage.length} ${noun}(s) fora do padrão`);
+
+    await mapLimit(problemsByPage, REPAIR_CONCURRENCY, async ({ o, problems }) => {
+      const repairNote =
+        `Na versão anterior desta ${noun}: ${problems.join('; e ')}. ` +
+        `Redesenhe a ${noun} inteira corrigindo isso, mantendo o mesmo design system e o mesmo assunto.`;
+      await redraw(o.index, repairNote);
+    });
+
+    html = assembleDocument(plan, pageHtmls, images);
+  }
   return html;
 }
 

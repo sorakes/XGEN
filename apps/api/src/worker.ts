@@ -14,7 +14,8 @@ import { resolveIntent } from './agent/intent';
 import { buildLiteralHtml, buildLiteralDocxHtml, literalFormat } from './agent/literal';
 import { convertToPDF, convertToPPTX, convertToDOCX, convertToXLSX } from './converters';
 import { convertToEditablePPTX } from './pptx/editable';
-import { saveDeckFromHtml } from './services/decks.service';
+import { saveDeckFromHtml, loadDeck } from './services/decks.service';
+import { reviseDeck } from './agent/revise';
 import type { DetailLevel, DocumentType, GenerationMode, ImageAsset, ImageSource, PageFormat } from './types';
 
 const EXTENSIONS: Record<DocumentType, string> = { PDF: 'pdf', PPTX: 'pptx', DOCX: 'docx', XLSX: 'xlsx' };
@@ -86,7 +87,15 @@ export function startWorker() {
 
       let outputData: string;
       let pageFormat: PageFormat = documentType === 'PPTX' ? 'SLIDE' : 'A4';
-      if (intent.mode === 'literal') {
+      const baseDeck = record.base_document_id ? loadDeck(record.base_document_id) : null;
+      if (baseDeck && (documentType === 'PPTX' || documentType === 'PDF')) {
+        // Revisão: altera a versão anterior em vez de gerar do zero.
+        const revised = await reviseDeck({
+          model, deck: baseDeck, instructions, newImages: images, maxRetries: settings.max_retries, onProgress,
+        });
+        outputData = revised.html;
+        pageFormat = revised.format;
+      } else if (intent.mode === 'literal') {
         await onProgress('Montando o arquivo com as imagens enviadas...');
         if (documentType === 'DOCX') {
           outputData = buildLiteralDocxHtml(images, intent.layout);
@@ -119,6 +128,8 @@ export function startWorker() {
 
       if (documentType === 'PDF') {
         await convertToPDF(outputData, filePath, pageFormat);
+        // Guarda as páginas: permite pedir alterações depois (previousDocumentId).
+        try { saveDeckFromHtml(jobId, instructions.slice(0, 120), outputData); } catch { /* HTML sem marcadores */ }
       } else if (documentType === 'PPTX') {
         const title = instructions.slice(0, 120);
         // Guarda os slides para o editor web (link "Editar" na resposta do chat).

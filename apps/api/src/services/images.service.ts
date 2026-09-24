@@ -20,6 +20,8 @@ const ASSET_TTL_MS = 6 * 60 * 60 * 1000;
 interface OpenWebUIConfig {
   url: string;
   apiKey: string;
+  /** true = token de sessão do próprio usuário (só enxerga os chats dele). */
+  session: boolean;
 }
 
 /** Headers que o OpenWebUI manda para a ferramenta (ver README). */
@@ -27,6 +29,12 @@ export interface OpenWebUIContext {
   chatId?: string;
   messageId?: string;
   userMessageId?: string;
+  /**
+   * Token do usuário logado, enviado pelo OpenWebUI quando a conexão da
+   * ferramenta usa autenticação "Session". Permite ler o chat dele sem API
+   * key de admin. Nunca é logado nem guardado.
+   */
+  userToken?: string;
 }
 
 export function readOpenWebUIContext(headers: Record<string, any>): OpenWebUIContext {
@@ -36,17 +44,55 @@ export function readOpenWebUIContext(headers: Record<string, any>): OpenWebUICon
     // Template não substituído ('{{CHAT_ID}}') ou vazio = header ausente.
     return typeof str === 'string' && str && !str.includes('{{') ? str : undefined;
   };
+  const auth = pick('Authorization');
   return {
     chatId: pick('X-OpenWebUI-Chat-Id'),
     messageId: pick('X-OpenWebUI-Message-Id'),
     userMessageId: pick('X-OpenWebUI-User-Message-Id'),
+    userToken: auth && /^Bearer\s+\S+/i.test(auth) ? auth.replace(/^Bearer\s+/i, '').trim() : undefined,
   };
 }
 
-function resolveOpenWebUIConfig(settings: Settings): OpenWebUIConfig | null {
-  const url = (settings.openwebui_url || OPENWEBUI_URL).trim().replace(/\/+$/, '');
-  const apiKey = (settings.openwebui_api_key || OPENWEBUI_API_KEY).trim();
-  return url && apiKey ? { url, apiKey } : null;
+// Onde o OpenWebUI costuma estar, visto de dentro do container do XGEN.
+const OPENWEBUI_CANDIDATES = ['http://open-webui:8080', 'http://host.docker.internal:3000', 'http://host.docker.internal:8080'];
+let detectedUrl: string | null = null;
+
+/** Acha o OpenWebUI sozinho quando a URL não foi configurada (fica em cache). */
+async function detectOpenWebUIUrl(): Promise<string | null> {
+  if (detectedUrl) return detectedUrl;
+  for (const candidate of OPENWEBUI_CANDIDATES) {
+    try {
+      const res = await fetch(`${candidate}/api/config`, { signal: AbortSignal.timeout(2500) });
+      const data: any = res.ok ? await res.json().catch(() => null) : null;
+      if (data && (data.name || data.version || data.features)) {
+        detectedUrl = candidate;
+        console.log(`[Images] OpenWebUI encontrado automaticamente em ${candidate}`);
+        return candidate;
+      }
+    } catch { /* tenta o próximo */ }
+  }
+  return null;
+}
+
+/**
+ * Credencial para ler o chat: o token de sessão do usuário (conexão com
+ * autenticação "Session" no OpenWebUI) tem prioridade; a API key de admin do
+ * painel é o plano B. A URL vem do painel/.env ou é detectada sozinha.
+ */
+async function resolveOpenWebUIConfig(settings: Settings, context: OpenWebUIContext): Promise<OpenWebUIConfig | null> {
+  const configuredUrl = (settings.openwebui_url || OPENWEBUI_URL).trim().replace(/\/+$/, '');
+  const adminKey = (settings.openwebui_api_key || OPENWEBUI_API_KEY).trim();
+  const apiKey = context.userToken || adminKey;
+  if (!apiKey) return null;
+  const url = configuredUrl || (await detectOpenWebUIUrl());
+  return url ? { url, apiKey, session: !!context.userToken } : null;
+}
+
+/** Por que as imagens do chat não chegaram — devolvido ao chat em vez de fingir. */
+export interface ImageCollection {
+  assets: ImageAsset[];
+  /** Explicação quando nenhuma imagem do chat pôde ser lida. */
+  problem?: string;
 }
 
 /**
@@ -59,8 +105,17 @@ export async function collectImages(
   context: OpenWebUIContext,
   settings: Settings
 ): Promise<ImageAsset[]> {
-  const owui = resolveOpenWebUIConfig(settings);
+  return (await collectImagesWithReport(bodyImages, context, settings)).assets;
+}
+
+export async function collectImagesWithReport(
+  bodyImages: unknown,
+  context: OpenWebUIContext,
+  settings: Settings
+): Promise<ImageCollection> {
+  const owui = await resolveOpenWebUIConfig(settings, context);
   const buffers: Buffer[] = [];
+  let problem: string | undefined;
 
   if (Array.isArray(bodyImages)) {
     for (const ref of bodyImages.slice(0, MAX_IMAGES_PER_JOB)) {
@@ -73,16 +128,22 @@ export async function collectImages(
     }
   }
 
-  if (context.chatId) {
+  // Imagens do chat: precisa saber QUAL chat (header do OpenWebUI) ou poder
+  // achar o chat mais recente do usuário (token de sessão).
+  if (context.chatId || context.userToken) {
     if (!owui) {
-      console.warn('[Images] Chamada do OpenWebUI, mas URL/API key do OpenWebUI não estão configuradas — imagens do chat ignoradas.');
+      problem = 'o XGEN não conseguiu acessar o OpenWebUI (URL não encontrada ou sem credencial)';
+      console.warn(`[Images] ${problem}`);
     } else {
       const fromChat = await imagesFromOpenWebUIChat(context, owui).catch(error => {
-        console.warn(`[Images] Falha ao buscar imagens do chat ${context.chatId}: ${error.message}`);
+        problem = `falha ao ler o chat no OpenWebUI (${error.message})`;
+        console.warn(`[Images] ${problem}`);
         return [] as Buffer[];
       });
       buffers.push(...fromChat);
     }
+  } else {
+    problem = 'o OpenWebUI não enviou nem o login do usuário nem o ID do chat (na conexão da ferramenta, use a autenticação "Session")';
   }
 
   const assets: ImageAsset[] = [];
@@ -100,7 +161,10 @@ export async function collectImages(
   }
 
   // Renumera depois do dedup para os ids ficarem contínuos (img-1, img-2...).
-  return assets.map((asset, i) => ({ ...asset, id: `img-${i + 1}` }));
+  return {
+    assets: assets.map((asset, i) => ({ ...asset, id: `img-${i + 1}` })),
+    problem: assets.length ? undefined : problem,
+  };
 }
 
 async function loadImageRef(ref: string, owui: OpenWebUIConfig | null): Promise<Buffer> {
@@ -147,8 +211,19 @@ async function imagesFromOpenWebUIChat(context: OpenWebUIContext, owui: OpenWebU
   // O OpenWebUI pode chamar a ferramenta antes de terminar de persistir a
   // mensagem nova; duas tentativas curtas cobrem essa janela.
   let files: any[] = [];
+  let chatId = context.chatId;
+  if (!chatId && owui.session) {
+    // Sem o header do chat: o chat que está chamando a ferramenta é o
+    // atualizado mais recentemente por esse usuário.
+    const list = await fetchJson(`${owui.url}/api/v1/chats/?page=1`, owui.apiKey);
+    const chats: any[] = Array.isArray(list) ? list : list?.items || list?.chats || [];
+    chats.sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0));
+    chatId = chats[0]?.id;
+    if (!chatId) throw new Error('nenhum chat encontrado para o usuário');
+  }
+  if (!chatId) throw new Error('ID do chat não informado');
   for (let attempt = 0; attempt < 3; attempt++) {
-    const chat = await fetchJson(`${owui.url}/api/v1/chats/${encodeURIComponent(context.chatId!)}`, owui.apiKey);
+    const chat = await fetchJson(`${owui.url}/api/v1/chats/${encodeURIComponent(chatId)}`, owui.apiKey);
     files = findImageFiles(chat, context);
     if (files.length > 0) break;
     await new Promise(resolve => setTimeout(resolve, 1500));
@@ -162,7 +237,7 @@ async function imagesFromOpenWebUIChat(context: OpenWebUIContext, owui: OpenWebU
       console.warn(`[Images] Não consegui baixar um anexo do chat: ${error.message}`);
     }
   }
-  console.log(`[Images] ${buffers.length} imagem(ns) recuperada(s) do chat ${context.chatId}`);
+  console.log(`[Images] ${buffers.length} imagem(ns) recuperada(s) do chat ${chatId}${owui.session ? ' (sessão do usuário)' : ''}`);
   return buffers;
 }
 
